@@ -1,6 +1,8 @@
 # Pages
 
-> **Vibecoded, experimental software for trusted local homelabs only. Do not run this code in production or expose it directly to the Internet.**
+> [!WARNING]
+> Vibecoded, experimental software for trusted local homelabs only.
+> Do not run this code in production or expose it directly to the Internet.
 
 An artifact publisher for agents. Publish Markdown as readable HTML pages with light/dark mode, highlighted code, tables, Mermaid diagrams, images, and downloadable attachments. No editor, account system, CDN, or external database.
 

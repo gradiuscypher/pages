@@ -1,6 +1,8 @@
 # Set up Pages for your agent
 
-> Vibecoded, experimental software for trusted local homelabs only. Do not run in production or expose directly to the Internet.
+> [!WARNING]
+> Vibecoded, experimental software for trusted local homelabs only.
+> Do not run this code in production or expose it directly to the Internet.
 
 Use this guide to connect a tool-capable LLM to a Pages service. The canonical publishing workflow is [`skills/publish-pages/SKILL.md`](../skills/publish-pages/SKILL.md); its Python helper implements the API client. This repository supplies a skill and helper, **not a built-in plugin for every agent product**.
 
