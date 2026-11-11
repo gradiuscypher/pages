@@ -1,0 +1,21 @@
+services:
+  pages:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PAGES_BIND_ADDRESS:-127.0.0.1}:${PAGES_PORT:-3000}:3000"
+    environment:
+      PAGES_API_KEY: ${PAGES_API_KEY:?Set PAGES_API_KEY in .env}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+    volumes:
+      - pages-data:/app/data
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+volumes:
+  pages-data:

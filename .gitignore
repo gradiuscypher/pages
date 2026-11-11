@@ -1,0 +1,15 @@
+node_modules/
+dist/
+data/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.local/
+install-pages-skill.py
+client.json
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
