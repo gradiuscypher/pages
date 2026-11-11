@@ -1,6 +1,6 @@
 # Pages
 
-> **Part of [smol-tools](https://github.com/gradiuscypher/smol-tools), a collection of vibecoded tools. Experimental software for trusted local homelabs only. Do not run this code in production or expose it directly to the Internet.**
+> **Vibecoded, experimental software for trusted local homelabs only. Do not run this code in production or expose it directly to the Internet.**
 
 An artifact publisher for agents. Publish Markdown as readable HTML pages with light/dark mode, highlighted code, tables, Mermaid diagrams, images, and downloadable attachments. No editor, account system, CDN, or external database.
 
@@ -132,7 +132,7 @@ All durable state, including attachments, is in `DATA_DIR`. Back up SQLite with 
 
 ## Contributing and publishing safely
 
-This standalone repository is the source of truth for Pages. In `smol-tools`, `pages/` is a Git submodule: clone that collection with `git clone --recurse-submodules https://github.com/gradiuscypher/smol-tools.git`, or initialize an existing checkout with `git submodule update --init --recursive`. Make Pages changes in its own repository, push them there, then commit the new submodule pointer in the collection.
+This repository is the source of truth for Pages. Make contributions here and keep setup, API, and agent documentation aligned with changes.
 
 Before committing, inspect the staged files and diff for publishing keys, private hostnames/IPs (including LAN addresses), user paths, and generated artifacts. Keep `.env` variants, `.local/` credential installers, client configurations, databases/WALs, backups, and uploaded artifacts private. `.env.example` contains only empty credentials and loopback defaults; use reserved example domains in documentation. Git ignores are a safeguard, not a secret scanner: review new files and scan the staged snapshot and any history you plan to push. If a credential leaks, rotate it immediately; deleting a file does not remove it from Git history.
 
