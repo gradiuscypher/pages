@@ -11,9 +11,9 @@ import { promisify } from 'node:util';
 const runFile = promisify(execFile);
 
 const key = 'test-key-with-at-least-24-characters';
-async function fixture(t) {
+async function fixture(t, overrides = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'pages-test-'));
-  const options = { apiKey: key, publicUrl: 'https://pages.internal', dataDir, maxUploadBytes: 1024 };
+  const options = { apiKey: key, publicUrl: 'https://pages.internal', dataDir, maxUploadBytes: 1024, ...overrides };
   let instance;
   let server;
   let base;
@@ -146,4 +146,50 @@ test('authored HTML cannot inject scripts, handlers, unsafe links, or document c
   const html = await (await f.request(`/p/${page.id}`)).text();
   assert.doesNotMatch(html, /<script>alert|onerror=|javascript:alert/);
   assert.doesNotMatch(html, /<div id="theme-toggle"|<div[^>]*class="site-header"/);
+});
+
+test('unconfigured API key permits complete anonymous page management; admin stays disabled', async (t) => {
+  const f = await fixture(t, { apiKey: undefined });
+  const headers = { Authorization: '' };
+  const created = await f.request('/api/pages', {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'Open publishing', markdown: 'Public API' }),
+  });
+  assert.equal(created.status, 201);
+  const page = await created.json();
+  const listed = await (await f.request('/api/pages', { headers })).json();
+  assert.ok(listed.pages.some(({ id }) => id === page.id));
+  assert.equal((await f.request(`/api/pages/${page.id}`, { headers })).status, 200);
+  assert.equal((await f.request('/admin', { headers })).status, 404);
+  assert.equal((await f.request(`/api/pages/${page.id}`, { method: 'DELETE', headers })).status, 204);
+  assert.equal((await f.request(`/p/${page.id}`)).status, 404);
+});
+
+test('admin requires separate credentials and confirmation token before cascading deletion', async (t) => {
+  const password = 'test-admin-password-with-entropy';
+  const f = await fixture(t, { adminPassword: password });
+  const page = await f.create();
+  const other = await f.create();
+  const asset = await (await f.upload(page, 'delete with page')).json();
+  assert.equal((await f.request('/admin')).status, 401);
+  assert.equal((await f.request('/admin', { headers: { Authorization: `Basic ${Buffer.from(`wrong:${password}`).toString('base64')}` } })).status, 401);
+  const headers = { Authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}` };
+  const dashboard = await f.request('/admin', { headers });
+  assert.equal(dashboard.status, 200);
+  assert.match(await dashboard.text(), new RegExp(page.id));
+  assert.equal((await f.request('/api/pages', { headers })).status, 401);
+  const path = `/admin/pages/${page.id}/delete`;
+  const confirmation = await f.request(path, { headers });
+  const token = (await confirmation.text()).match(/name="csrf" value="([^"]+)"/)[1];
+  const submit = (body, extra = {}) => f.request(path, { method: 'POST', redirect: 'manual', headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', ...extra }, body });
+  assert.equal((await submit('csrf=wrong')).status, 403);
+  assert.equal((await submit(`csrf=${token}`, { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+  assert.equal((await f.request(`/api/pages/${page.id}`)).status, 200);
+  const deleted = await submit(`csrf=${token}`);
+  assert.equal(deleted.status, 303);
+  assert.equal(deleted.headers.get('location'), '/admin');
+  for (const path of [`/p/${page.id}`, `/p/${page.id}/source.md`, new URL(asset.url).pathname]) {
+    assert.equal((await f.request(path)).status, 404);
+  }
+  assert.equal((await f.request(`/api/pages/${other.id}`)).status, 200);
 });

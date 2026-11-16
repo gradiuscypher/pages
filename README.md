@@ -10,7 +10,7 @@ The palette follows [grds.io](https://grds.io/). Typography uses locally install
 
 ## Run
 
-Requires Node.js 24 or newer, npm, and Python 3 for the optional agent helper. Docker Compose is an alternative to installing Node on the host.
+Requires Node.js 24 or newer and npm. Python 3 is needed only for Python clients and the optional agent helper. Docker Compose is an alternative to installing Node on the host.
 
 ```sh
 git clone https://github.com/gradiuscypher/pages.git
@@ -19,9 +19,11 @@ npm ci
 npm run build
 cp .env.example .env
 chmod 600 .env
-openssl rand -hex 32
-# Privately set PAGES_API_KEY in .env to that generated value; never paste it into chat.
 # Set PUBLIC_URL to the origin readers and agents will use.
+# API access is open by default. To require a key, generate one with:
+# openssl rand -hex 32
+# Privately set PAGES_API_KEY to that value; never paste it into chat.
+# Optionally set a separate ADMIN_PASSWORD (at least 16 characters).
 npm start
 ```
 
@@ -29,7 +31,8 @@ Open `http://localhost:3000` for the formatting showcase. The landing page does 
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PAGES_API_KEY` | Required | Bearer key, at least 24 characters; use a random 32-byte key |
+| `PAGES_API_KEY` | Empty (API open) | Optional Bearer key, at least 24 characters when set; use a random 32-byte key |
+| `ADMIN_PASSWORD` | Empty (admin disabled) | Separate dashboard password, at least 16 characters when set |
 | `PUBLIC_URL` | `http://localhost:3000` | Canonical HTTP(S) origin, without a path; used in returned links |
 | `HOST` | `127.0.0.1` | Listening address |
 | `PORT` | `3000` | Listening port; also changes the default public URL |
@@ -38,7 +41,7 @@ Open `http://localhost:3000` for the formatting showcase. The landing page does 
 | `PAGES_BIND_ADDRESS` | `127.0.0.1` | Compose-only host address; set the LAN IP to expose Pages there |
 | `PAGES_PORT` | `3000` | Compose-only published host port; reflect it in `PUBLIC_URL` |
 
-`npm start` reads `.env`; the container receives variables from Compose. Keep `.env` private (`chmod 600 .env`). Rotate the publishing key by changing it and restarting; existing page links remain valid.
+`npm start` reads `.env`; the container receives variables from Compose. Keep `.env` private (`chmod 600 .env`). Rotate a configured API key or admin password by changing it and restarting; existing page links remain valid. The API key and admin password are independent credentials.
 
 ### Container
 
@@ -56,9 +59,9 @@ For HTTPS, put your internal reverse proxy in front of the published port and se
 
 ### Reader access and trust
 
-**The key protects all `/api` operations, including listing and reading source through the API. Public page links, source downloads, and attachment links require no key.** Their UUIDs are unguessable, not a substitute for reader authentication. Anyone holding a link can read or forward it. There is no public document index.
+**Absent or empty `PAGES_API_KEY` means every `/api` operation is open, including listing, source reads, writes, and deletion.** Set a key to require exact `Authorization: Bearer <PAGES_API_KEY>` authentication for all API requests. Public page links, source downloads, and attachment links never require that key. UUIDs are unguessable, not a substitute for reader authentication. Anyone holding a link can read or forward it. The landing page has no public document index, but the open API does expose a listing.
 
-Deploy on a trusted private homelab network/VPN, not in production or on the public Internet. For confidential artifacts, enforce reader authentication at an internal reverse proxy. Use HTTPS whenever the key crosses a network. The publishing key grants full control of all documents; keep it in agent environment/secrets, not prompts or committed files.
+Deploy on a trusted private homelab network/VPN, not in production or on the public Internet. For confidential artifacts, enforce reader authentication at an internal reverse proxy. Use HTTPS whenever credentials cross a network. A configured publishing key grants full control of all documents; keep it in agent environment/secrets, not prompts or committed files.
 
 Raw HTML in Markdown is sanitized; executable HTML, JavaScript, embedded iframes, and arbitrary CSS are not supported. Upload standalone HTML reports as downloads, or express the report using Markdown, tables, images, and Mermaid. Only signature-recognized PNG, JPEG, GIF, and WebP files display inline. SVG, HTML, PDFs, and all other uploads are forced downloads with a sandbox policy. Remote HTTPS images can be embedded and contact their host when readers open the page; use uploaded images for self-contained reports.
 
@@ -66,17 +69,17 @@ Attachments are stored as database BLOBs. Uploads are buffered in memory up to t
 
 ## AI agents
 
-See [agent setup and LLM-guided skill/plugin integration](docs/agents.md) for installing the bundled workflow, connecting other agent hosts, and a setup prompt you can give your own LLM. There is no required hosted AI service or model-specific native plugin.
+Start with the served [LLM instructions](/llms.txt) (also rendered at `/docs`), [API reference](docs/api.md) (rendered at `/docs/api`, raw at `/docs/api.md`), and [OpenAPI 3.1 document](docs/openapi.json) (served at `/openapi.json`). Download the complete Python client from `/sdk/pages.py` or JavaScript module from `/sdk/pages.mjs`; use these libraries rather than implementing another HTTP client. [Agent instructions](docs/agents.md) include copyable usage. There is no required hosted AI service or model-specific native plugin.
 
 ### Publish with the omp skill
 
-Build a single-file installer using the server's private `.env`:
+The optional omp installer packages the server URL and optional API key from the private `.env`. It also works with an open API:
 
 ```sh
 python3 scripts/package-skill.py
 ```
 
-This creates `.local/install-pages-skill.py` with mode `0600`. **It contains the real publishing key.** `.env` and `.local/` are excluded from Git and the Docker build context. Transfer the installer with SCP/SFTP to the homelab VM, then run it as the user who runs omp:
+This creates `.local/install-pages-skill.py` with mode `0600`. **When authentication is enabled, it contains the real publishing key.** `.env` and `.local/` are excluded from Git and the Docker build context. Transfer the installer with SCP/SFTP to the homelab VM, then run it as the user who runs omp:
 
 ```sh
 chmod 600 install-pages-skill.py
@@ -93,38 +96,13 @@ Delete a page and all its attachments with `python3 ~/.agents/skills/publish-pag
 
 ## HTTP interface
 
-Every `/api` request uses `Authorization: Bearer <PAGES_API_KEY>`. JSON writes use `Content-Type: application/json`. Errors use `{ "error": "message" }`; invalid input is 400, unauthorized is 401, missing resources 404, and oversized bodies/uploads 413.
+The authoritative [API reference](docs/api.md) documents every API operation, request/response shape, limits, public reads, attachment workflow, and recovery from partial publication. It is rendered at `/docs/api` and served as Markdown at `/docs/api.md`; machine-readable OpenAPI is at `/openapi.json`. The API is open unless `PAGES_API_KEY` is configured.
 
-| Method | Path | Result |
-| --- | --- | --- |
-| `POST` | `/api/pages` | Create; 201 and full page JSON |
-| `GET` | `/api/pages` | `{ "pages": [...] }`, newest updated first; metadata only |
-| `GET` | `/api/pages/:id` | Full page JSON with Markdown and attachments |
-| `PUT` | `/api/pages/:id` | Replace title, description, Markdown; attachments retained |
-| `DELETE` | `/api/pages/:id` | Delete page and its attachments; 204 |
-| `POST` | `/api/pages/:id/assets` | Upload one multipart `file`; 201 and asset JSON |
-| `DELETE` | `/api/pages/:id/assets/:assetId` | Delete an attachment owned by this page; 204 |
+## Admin dashboard
 
-Create/update body:
+Set `ADMIN_PASSWORD` to a separate private password of at least 16 characters and restart to enable `/admin`. Without a password, `/admin` is disabled. Open it in a browser and use HTTP Basic authentication with username `admin` and the configured password.
 
-```json
-{
-  "title": "Incident review",
-  "description": "Evidence, impact, and remediation.",
-  "markdown": "## Findings\n\nNo customer data was exposed.\n\n```mermaid\nflowchart LR\n  Alert --> Investigate --> Resolve\n```"
-}
-```
-
-`title` is required (1–200 characters), `description` is optional (up to 500), `markdown` is required (up to 1 MiB; may be empty). Omitting description on update clears it. Page JSON includes `id`, `title`, `description`, `markdown`, ISO `createdAt`/`updatedAt`, absolute `url`, and `assets`. Listing omits Markdown and assets.
-
-Asset JSON includes `id`, `pageId`, `name`, detected `mime`, byte `size`, absolute `url`, and `downloadUrl`. Upload after creating the page, then update Markdown to reference the returned URL:
-
-```md
-![Latency comparison](https://pages.internal.example/assets/ASSET_ID/latency.png)
-[Download full report](https://pages.internal.example/assets/OTHER_ID/report.html?download=1)
-```
-
-Public read paths: `/p/:id` for HTML, `/p/:id/source.md` for a Markdown download, `/assets/:id/:name` for an attachment (`?download=1` forces download). The server returns `no-store`, `noindex`, a restrictive content security policy, and no referrer headers. These do not revoke copies readers have already saved.
+The dashboard lets an administrator review published documents and delete pages with their attachments. Deletion is CSRF-protected and irreversible; it cannot revoke copies readers already downloaded. Dashboard authentication is separate from optional API Bearer authentication: an API key does not grant dashboard access, and the admin password is not an API key. **The dashboard password does not restrict an open API: anyone with network access can still list, modify, and delete pages through it.** Use HTTPS for the browser login and keep this interface on the trusted network.
 
 ## Operations
 

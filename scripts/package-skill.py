@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a private, self-contained installer for the Pages agent skill."""
+"""Build a self-contained installer for the Pages agent skill and optional key."""
 
 import argparse
 import base64
@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parent.parent
 
 INSTALLER = '''#!/usr/bin/env python3
-"""Private Pages skill installer. Contains a publishing key; transfer securely."""
+"""Pages skill installer. May contain a publishing key; transfer securely."""
 import argparse
 import base64
 import json
@@ -23,8 +23,8 @@ import tempfile
 PAYLOAD = json.loads(base64.b64decode(__PAYLOAD__))
 
 def main():
-    parser = argparse.ArgumentParser(description="Install the Pages omp skill and private credentials for the current user.")
-    parser.add_argument("--replace", action="store_true", help="replace existing skill files or differing Pages credentials")
+    parser = argparse.ArgumentParser(description="Install the Pages omp skill and private configuration for the current user.")
+    parser.add_argument("--replace", action="store_true", help="replace existing skill files or differing Pages configuration")
     args = parser.parse_args()
     skill = Path.home() / ".agents" / "skills" / "publish-pages"
     config_dir = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "grds-pages"
@@ -50,11 +50,11 @@ def main():
             if os.path.exists(temporary):
                 os.unlink(temporary)
     print(f"Installed skill: {skill}")
-    print(f"Private credentials: {config} (0600)")
+    print(f"Private configuration: {config} (0600)")
     print(f"Pages URL: {PAYLOAD['config']['url']}")
-    print("Start a new omp session. The helper loads credentials automatically; no shell exports are needed.")
+    print("Start a new omp session. The helper loads configuration automatically; no shell exports are needed.")
     print("Verify: python3 ~/.agents/skills/publish-pages/scripts/pages.py list")
-    print("Remove this copied installer after use; it contains your publishing key.")
+    print("Remove this copied installer after use; it may contain a publishing key.")
 
 if __name__ == "__main__":
     main()
@@ -74,10 +74,17 @@ def main():
                 values[name.strip()] = value.strip().strip('\"\'')
     key = values.get('PAGES_API_KEY', '')
     url = values.get('PUBLIC_URL', '').rstrip('/')
-    parsed = urlsplit(url)
-    if len(key) < 24 or any(ord(c) < 33 or ord(c) > 126 for c in key):
-        parser.error('The environment file must contain a printable PAGES_API_KEY of at least 24 characters.')
-    if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
+    try:
+        parsed = urlsplit(url)
+        parsed.port
+    except ValueError:
+        parser.error('The environment file must contain a valid PUBLIC_URL HTTP(S) origin.')
+    if key and (len(key) < 24 or any(ord(c) < 33 or ord(c) > 126 for c in key)):
+        parser.error('PAGES_API_KEY must be printable ASCII without whitespace and at least 24 characters, or empty for an open API.')
+    if (parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username is not None
+            or parsed.password is not None or parsed.path or parsed.query or parsed.fragment
+            or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url) or '\\' in url
+            or '?' in url or '#' in url):
         parser.error('The environment file must contain a PUBLIC_URL HTTP(S) origin.')
     payload = {
         'config': {'url': url, 'apiKey': key},
@@ -97,7 +104,7 @@ def main():
         if os.path.exists(temporary):
             os.unlink(temporary)
     print(f'Created private installer: {args.output} (0600)')
-    print('Contains the publishing key. Copy securely; do not commit or serve this file.')
+    print('May contain a publishing key. Copy securely; do not commit or serve this file.')
 
 
 if __name__ == '__main__':

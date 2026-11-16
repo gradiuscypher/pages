@@ -1,229 +1,136 @@
-# Set up Pages for your agent
+# Pages: instructions for LLMs
 
-> [!WARNING]
-> Vibecoded, experimental software for trusted local homelabs only.
-> Do not run this code in production or expose it directly to the Internet.
+Pages publishes Markdown as shareable HTML with code highlighting, tables, Mermaid, images, and downloadable attachments. It is experimental software for trusted local homelabs, not a production-hardened or multi-tenant service. Check the intended audience before publishing.
 
-Use this guide to connect a tool-capable LLM to a Pages service. The canonical publishing workflow is [`skills/publish-pages/SKILL.md`](../skills/publish-pages/SKILL.md); its Python helper implements the API client. This repository supplies a skill and helper, **not a built-in plugin for every agent product**.
+## Discover and use the existing clients
 
-## 1. Clone and run the service
+- Read this document at `/llms.txt` or rendered at `/docs`.
+- Read the authoritative [API reference](/docs/api.md) for all fields, errors, limits, and recovery semantics; humans can use the [rendered reference](/docs/api).
+- Read [OpenAPI 3.1](/openapi.json) for machine-readable operations and schemas.
+- Download the complete [Python library](/sdk/pages.py) or [JavaScript ES module](/sdk/pages.mjs). **Use these libraries; do not reinvent the HTTP client.** They implement all seven API operations and the multi-step publication workflow without third-party dependencies.
 
-```sh
-git clone https://github.com/gradiuscypher/pages.git
-cd pages
-```
+Set `PAGES_URL` to the HTTP(S) service origin, for example `https://pages.example.com` (no path). The examples use that environment variable; the returned public URLs may use a different origin configured by the operator.
 
-Follow [README: Run](../README.md#run) for Node.js or Docker setup, environment variables, network binding, and reverse-proxy configuration. Complete that setup before installing a client. Python 3 is required on client hosts; the helper needs no Python packages. Confirm `/healthz` responds at the configured service origin.
+**Authentication is opt-in.** An absent/empty server `PAGES_API_KEY` makes all API operations open, including listing and deletion. Only supply a client `PAGES_API_KEY` if the operator configured one; pass it privately through environment/secrets, never chat or Markdown. A configured key grants full control of every page/asset. Public HTML, source, and attachment URLs require no API key. UUID links are not access control. `/admin` has separate browser HTTP Basic authentication and is not a client API.
 
-**Trust boundary:** this is a small internal publisher, not a hardened or multi-tenant service. Keep it on a trusted LAN/VPN; use HTTPS when credentials cross a network. HTTP exposes the bearer key in transit. For confidential documents, enforce reader authentication at a network boundary or internal reverse proxy.
+Use HTTPS when credentials cross a network. Do not print secret environment values or enable shell tracing. A reverse proxy may add separate authentication that these clients do not configure.
 
-The single publishing key grants full control over **every** page and attachment, including list, read, update, and delete. There are no per-agent permissions, scoped keys, or reader accounts. Every `/api` operation requires the bearer key. Returned page URLs, `/p/UUID/source.md`, and returned attachment URLs require **no Pages key**. Unguessable links and an absent public index do not make content private. A reader-authenticating proxy is a separate access layer; its authentication may require additional client integration.
+## Python quick start
 
-Complete this step when the service is reachable from the agent host, `PUBLIC_URL` points to the origin readers can reach, and the human has selected an appropriate audience. The client origin may differ from `PUBLIC_URL`; public-link verification must use the returned URLs.
-
-## 2. Install for omp
-
-On the service host, from the repository root with its private `.env` configured:
+Requires Python 3.8 or newer. Download once into your working/tool directory (not into a published attachment):
 
 ```sh
-chmod 600 .env
-python3 scripts/package-skill.py
+export PAGES_URL=https://pages.example.com
+curl --fail --show-error --silent "$PAGES_URL/sdk/pages.py" --output pages.py
 ```
 
-This creates `.local/install-pages-skill.py` with mode `0600`. **The installer embeds the live publishing key**, not an encrypted secret. Transfer it using SCP/SFTP over your already configured SSH connection, or run it locally if the agent runs on this host. Keep both the generated original and any transferred copy private; never attach them to a page, paste them into chat, or commit them.
+From that directory:
 
-On the agent host, as the user who runs omp, in the directory containing the transferred installer:
-
-```sh
-chmod 600 install-pages-skill.py
-python3 install-pages-skill.py
-python3 ~/.agents/skills/publish-pages/scripts/pages.py list
-rm install-pages-skill.py
-```
-
-For a same-host installation, run `python3 .local/install-pages-skill.py` from the repository instead; remove that generated installer after installation. The installer writes:
-
-- Skill and helper: `~/.agents/skills/publish-pages/`.
-- Private credentials: `~/.config/grds-pages/client.json`, or `$XDG_CONFIG_HOME/grds-pages/client.json`, mode `0600`.
-
-Start a new omp session to reload skill discovery. No shell startup edits or secret exports are required. An identical installer can be rerun; differing installed files require an intentional `--replace`. After server-key rotation or a public-origin change, regenerate the installer and update clients with `--replace`. `PAGES_URL` and `PAGES_API_KEY`, if set, override the corresponding stored settings; remove stale overrides when using the installer configuration.
-
-Complete this step when `list` succeeds without displaying credentials and the new omp session discovers `publish-pages`.
-
-## 3. Use another tool-capable LLM
-
-A skill is instructions plus local files; it does not grant shell, file, browser, or network permissions. Give the host the necessary tools and access to the service. Inspect that host's installed version and actual skill/plugin discovery mechanism before selecting an installation directory or format. Do not assume omp's path applies to another product.
-
-For omp's manual installation, from the repository root:
-
-```sh
-mkdir -p ~/.agents/skills
-cp -R skills/publish-pages ~/.agents/skills/
-```
-
-For another host that supports directory-based skills, copy the **whole** `skills/publish-pages/` directory, including `scripts/`, into the directory documented by that host. If it has no skill discovery, explicitly load `skills/publish-pages/SKILL.md` into the agent's instructions and invoke `python3 skills/publish-pages/scripts/pages.py` from the clone. A native plugin, if the host supports one, should be a thin adapter invoking this helper and loading the bundled workflow, rather than a second implementation of publishing behavior.
-
-Use the portable installer for private credential storage even when installing a separate host adapter, or inject both `PAGES_URL` and `PAGES_API_KEY` from a trusted secret manager. For a manual, temporary Bash session, the **human** can enter credentials in their own terminal:
-
-```bash
-set +x
-read -r -p 'Pages API origin (http:// or https://, no path): ' PAGES_URL
-read -r -s -p 'Pages API key: ' PAGES_API_KEY
-printf '\n'
-export PAGES_URL PAGES_API_KEY
-python3 skills/publish-pages/scripts/pages.py list
-```
-
-The agent process must inherit that environment; exports in a separate shell do not configure an already running agent. Avoid echoing the environment or invoking shell tracing. For persistent settings, keep `client.json` private and mode `0600`; its fields are `url` and `apiKey`, and the helper finds it at the paths above regardless of where the skill is installed. Keep credentials out of plugin manifests, committed config, prompts, reports, attachments, and logs. Share paths and success/error status with the LLM, not secret values.
-
-### Copyable setup prompt
-
-Give your LLM the following prompt from the repository checkout. Supply credentials separately using the private configuration or environment, never in the prompt.
-
-```text
-Configure this host to publish to my Pages service using this checkout.
-
-Read docs/agents.md and skills/publish-pages/SKILL.md, inspect the bundled
-helper and its --help, and inspect this host's actual installed skill/plugin
-mechanism and tool permissions. Use its documented native mechanism: install
-the complete bundled skill when supported, or adapt it into a native plugin
-only if this host really supports plugins. Otherwise load the bundled skill
-explicitly and invoke its helper. Do not claim a built-in Pages plugin exists.
-Keep the bundled skill as the workflow source of truth and use the existing
-Python helper rather than reimplementing its HTTP client.
-
-Support publish, update (publish --page), list, show, upload, and delete.
-Preserve the skill's attachment behavior: repeat --asset, resolve
-asset:basename references, retain existing attachments on replacement, reuse
-returned URLs to avoid duplicate uploads, and use downloadUrl for forced
-downloads. Standalone upload does not rewrite the page. Respect non-atomic
-publication: inspect list/show after ambiguous failures before retrying writes.
-
-Discover credentials only through the helper's private configuration or
-injected environment. Never print, paste, commit, or embed secrets in prompts,
-plugin configuration, or published artifacts. If credentials are absent, ask
-me to enter them privately in my terminal, not in chat. Check audience and
-network trust before publishing; this service is not production-hardened.
-
-Run the disposable smoke check in docs/agents.md: publish a harmless report
-with an image and download, inspect persisted state with show, exercise the
-adapter's list/update/upload operations, and verify returned public HTML,
-Markdown source, and attachment URLs without a Pages bearer key. Inspect
-rendering in a browser when available. Then delete only the smoke page and
-verify its public URLs are gone. Report the installed paths and checks actually
-performed; explicitly disclose any browser or connectivity limitation.
-```
-
-## 4. Validate with a disposable page
-
-Run the following from the clone root after configuring credentials. It uses the repository helper, which loads the same private configuration as the installed copy. To validate a native adapter, exercise its equivalent operations too; a working helper alone does not prove host discovery or adapter wiring.
-
-This smoke check uses only invented content. It creates an isolated local directory, saves the returned page ID immediately for recovery, exercises list/show/update/upload, and checks public content **without an Authorization header**. It does not read or print credential files. If a write fails, follow the bundled skill's recovery instructions before retrying; inspect any saved state in the smoke directory.
-
-```bash
-SMOKE_DIR=$(mktemp -d)
-export SMOKE_DIR
-printf 'Smoke files: %s\n' "$SMOKE_DIR"
-python3 - <<'PY'
-import base64
-import json
+```python
 import os
 from pathlib import Path
-import subprocess
-import sys
-from urllib.request import urlopen
+from pages import Client, PagesError
 
-work = Path(os.environ['SMOKE_DIR'])
-helper = Path('skills/publish-pages/scripts/pages.py').resolve()
-
-def run(*args):
-    result = subprocess.run([sys.executable, str(helper), *map(str, args)],
-                            check=True, stdout=subprocess.PIPE, text=True)
-    return json.loads(result.stdout)
-
-def fetch(url):
-    # No Pages credentials are added to public reads.
-    with urlopen(url, timeout=30) as response:
-        return response.read(), response.headers
-
-image = base64.b64decode(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1sAAAAASUVORK5CYII=')
-(work / 'pixel.png').write_bytes(image)
-(work / 'measurements.csv').write_text('check,result\nsmoke,ok\n')
-(work / 'appendix.txt').write_text('Harmless standalone upload.\n')
-(work / 'report.md').write_text(
-    '# Agent integration smoke\n\nHarmless disposable content.\n\n'
-    '![Smoke pixel](asset:pixel.png)\n\n'
-    '[Download CSV](asset:measurements.csv)\n')
-title = 'Agent integration smoke ' + work.name
-print('Smoke title:', title, flush=True)
-page = run('publish', work / 'report.md', '--title', title,
-           '--description', 'Disposable integration check',
-           '--asset', work / 'pixel.png', '--asset', work / 'measurements.csv',
-           '--json')
-(work / 'page.json').write_text(json.dumps(page))
-identifier = page['id']
-assert any(p['id'] == identifier for p in run('list')['pages'])
-shown = run('show', identifier)
-assert len(shown['assets']) == 2 and 'asset:' not in shown['markdown']
-run('upload', identifier, work / 'appendix.txt')
-# Reuse persisted asset URLs; updating must not upload the same files again.
-(work / 'report.md').write_text(shown['markdown'] + '\nUpdate verified.\n')
-run('publish', work / 'report.md', '--page', identifier,
-    '--title', title,
-    '--description', 'Disposable integration check', '--json')
-shown = run('show', identifier)
-assert 'Update verified.' in shown['markdown'] and len(shown['assets']) == 3
-(work / 'page.json').write_text(json.dumps(shown))
-html, _ = fetch(shown['url'])
-assert b'Agent integration smoke' in html and b'Update verified.' in html
-source, _ = fetch(shown['url'].rstrip('/') + '/source.md')
-assert source.decode('utf-8') == shown['markdown']
-for asset in shown['assets']:
-    expected = (work / asset['name']).read_bytes()
-    body, _ = fetch(asset['url'])
-    assert body == expected, asset['name']
-    body, headers = fetch(asset['downloadUrl'])
-    assert body == expected and 'attachment' in headers.get('Content-Disposition', '')
-print('Authenticated publish/list/show/upload/update and unauthenticated reads passed.')
-print('Open before deletion:', shown['url'])
-print('Page ID:', identifier)
-PY
+client = Client(os.environ['PAGES_URL'], os.environ.get('PAGES_API_KEY'))
+try:
+    page = client.publish(
+        title='Incident review',
+        description='Evidence and remediation.',
+        markdown=Path('report.md').read_text(encoding='utf-8'),
+        assets=['chart.png', 'measurements.csv'],
+    )
+    print(page['id'], page['url'])  # Retain these for later update/recovery.
+except PagesError as error:
+    print('Publication failed:', error.status, error.page_id, error.recovery_url)
+    raise  # Inspect persisted state before retrying.
 ```
 
-A nonzero result is a failed check, not successful completion. The helper prints redacted error and recovery information to stderr; inspect that information before retrying. Never expose credentials to diagnose a failure. When available, open the printed URL in a browser before deleting it: verify the heading, image, attachment links, and CSV download. This smoke does not cover every rendering feature; use the bundled skill's rendering checks when publishing reports that contain tables, code, or Mermaid.
+`report.md` can contain `![Chart](asset:chart.png)` and `[Download measurements](asset:measurements.csv)`. Basenames must identify supplied assets unambiguously. For a report without attachments, omit `assets`. `markdown` is text, not a file path.
 
-After verification, delete **only this smoke page**. Keep the same shell and `SMOKE_DIR` value:
+All Python methods:
 
-```bash
-python3 - <<'PY'
-import json
-import os
-from pathlib import Path
-import subprocess
-import sys
-from urllib.error import HTTPError
-from urllib.request import urlopen
-
-work = Path(os.environ['SMOKE_DIR'])
-page = json.loads((work / 'page.json').read_text())
-helper = Path('skills/publish-pages/scripts/pages.py').resolve()
-subprocess.run([sys.executable, str(helper), 'delete', page['id']], check=True)
-result = subprocess.run([sys.executable, str(helper), 'show', page['id']],
-                        capture_output=True, text=True)
-assert result.returncode != 0 and 'HTTP 404' in result.stderr
-urls = [page['url'], page['url'].rstrip('/') + '/source.md']
-urls += [a['url'] for a in page['assets']]
-for url in urls:
-    try:
-        with urlopen(url, timeout=30):
-            raise AssertionError('Deleted content remains readable: ' + url)
-    except HTTPError as error:
-        assert error.code == 404, (url, error.code)
-print('Deletion and public page/source/asset removal verified.')
-PY
+```python
+listing = client.list()                         # {'pages': [metadata, ...]}
+page = client.get(page_id)                      # Full page, Markdown, assets.
+page = client.create('Title', '# Body', description='Summary')
+page = client.update(page_id, 'New title', '# Replacement', description='')
+asset = client.upload(page_id, 'appendix.pdf')   # Does not rewrite Markdown.
+client.delete_asset(page_id, asset_id)
+client.delete(page_id)                          # Includes all attachments.
+# Replace via the full publication workflow; existing assets remain:
+page = client.publish('Title', markdown, assets=[], page_id=page_id)
 ```
 
-Once deletion succeeds, remove the generated local smoke directory. If interrupted, recover its page ID from `page.json`; if no state file was saved, locate the uniquely intended smoke page with `list` and inspect `show` before deleting anything. Deletion cannot revoke copies already downloaded by readers.
+`Client(base_url, api_key=None, *, timeout=30)` accepts a timeout in seconds. Successful deletes return `None`. `PagesError.status` is the HTTP status or `None`; partial-publication recovery fields are `page_id` and `recovery_url`.
 
-Setup is complete when the host loads its workflow, its client or adapter can perform the requested operations, the disposable page's persisted and public content was verified, and that page and its assets are gone. Report only checks actually exercised, including any browser limitation.
+## JavaScript quick start
+
+Requires Node.js 24 or newer. Download the Node.js ES module beside your script:
+
+```sh
+export PAGES_URL=https://pages.example.com
+curl --fail --show-error --silent "$PAGES_URL/sdk/pages.mjs" --output pages.mjs
+```
+
+```javascript
+import { readFile } from 'node:fs/promises';
+import { Client, PagesError } from './pages.mjs';
+
+const client = new Client(process.env.PAGES_URL, process.env.PAGES_API_KEY);
+try {
+  const page = await client.publish({
+    title: 'Incident review',
+    description: 'Evidence and remediation.',
+    markdown: await readFile('report.md', 'utf8'),
+    assets: ['chart.png', 'measurements.csv'],
+  });
+  console.log(page.id, page.url); // Retain these for later update/recovery.
+} catch (error) {
+  if (error instanceof PagesError) {
+    console.error('Publication failed:', error.status, error.pageId, error.recoveryUrl);
+  }
+  throw error;
+}
+```
+
+All JavaScript methods are asynchronous:
+
+```javascript
+const listing = await client.list(); // {pages: [metadata, ...]}
+let page = await client.get(pageId);
+page = await client.create({title: 'Title', markdown: '# Body'});
+page = await client.update(pageId, {title: 'New title', markdown: '# Replacement'});
+const asset = await client.upload(pageId, 'appendix.pdf');
+await client.deleteAsset(pageId, assetId);
+await client.delete(pageId);
+page = await client.publish({title: 'Title', markdown, assets: [], pageId});
+```
+
+`new Client(baseUrl, apiKey=null, {timeoutMs=30000}={})` accepts a timeout in milliseconds. Successful deletes return `null`. `PagesError.status` is the HTTP status or `null`; partial-publication recovery fields are `pageId` and `recoveryUrl`.
+
+## Publish safely
+
+1. Use Markdown rather than executable HTML. Raw HTML is sanitized; scripts, iframes, and arbitrary CSS are unsupported. Mermaid fenced blocks, tables, and code blocks are supported.
+2. Supply local files to `publish` and refer to them with `asset:basename`. The library substitutes each asset's returned `url`; non-image files download at that URL. Only signature-recognized PNG/JPEG/GIF/WebP display inline. To force an image download, use its returned `downloadUrl` when writing Markdown manually. HTML, SVG, PDF, and other files download. Keep credentials and private files out of attachments.
+3. Save returned page IDs, URLs, and asset metadata. `get` returns persisted Markdown and assets; `list` returns metadata, ordered newest-updated first, with no pagination.
+4. Updating is a **full replacement**, not a patch. Required title/Markdown must be supplied; omitted description clears it. Existing attachments remain. Reuse persisted URLs instead of uploading the same files again. Standalone upload/delete never rewrites Markdown.
+5. Inspect persisted Markdown/assets and, when tools allow, open the **returned** public URL to check rendering, images, diagrams, and downloads. Public verification must not send the API key. Report only checks actually performed.
+6. Delete only content the user intended to remove. Deleting a page cascades to all attachments and breaks its public links; it cannot revoke saved copies.
+
+Limits: title ≤200 UTF-16 code units and nonblank; description ≤500; Markdown ≤1 MiB UTF-8; JSON body ≤1100 KiB including escaping; one file per upload, default ≤25 MiB (operator-configurable). There is no total storage quota, per-agent isolation, conditional update, or multi-request transaction. Writers are last-write-wins.
+
+### Recover partial or ambiguous writes
+
+The clients validate local assets/references before publication, reject redirects, and **never automatically retry**. Publication still spans multiple requests: create/replace, uploads, and final Markdown replacement can fail independently. Existing pages and successful uploads are retained on failure. Do not assume an error means nothing changed.
+
+- Use the error's known page ID/recovery URL, then `get` to inspect source and assets.
+- If create succeeded but its response was lost, `list` and inspect the uniquely intended page before creating again.
+- If an upload response was lost, inspect the asset list before uploading again; uploads are not deduplicated.
+- Resume against the existing page and reuse returned asset URLs. Check current state after an ambiguous update/delete.
+- Never blindly retry writes or delete unrelated documents to clean up.
+
+## Optional agent-host integration
+
+No native plugin or hosted AI provider is required. A tool-capable agent can load these instructions and import a downloaded library. A skill/plugin does not grant filesystem or network permissions; use the actual host's documented discovery mechanism rather than assuming one universal install path.
+
+This repository also includes the omp workflow in `skills/publish-pages/`. For a key-protected deployment, the repository's `scripts/package-skill.py` builds a private installer embedding the configured key. Follow the repository README for installation, credential storage, key rotation, and operations. Never publish or commit that generated installer. For an open deployment or direct library use, no credential installer is needed.

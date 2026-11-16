@@ -1,11 +1,12 @@
 import express from 'express';
 import multer from 'multer';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStore } from './store.js';
-import { renderHome, renderPage, renderError } from './render.js';
+import { renderHome, renderPage, renderError, renderGuide } from './render.js';
+import { adminRouter } from './admin.js';
 
 const staticDirectory = fileURLToPath(new URL('../dist/', import.meta.url));
 const digest = (value) => createHash('sha256').update(value).digest();
@@ -29,8 +30,9 @@ function imageMime(bytes) {
   return 'application/octet-stream';
 }
 
-export function createApp({ apiKey, publicUrl, dataDir, maxUploadBytes = 25 * 1024 * 1024 }) {
-  if (typeof apiKey !== 'string' || apiKey.length < 24) throw new Error('PAGES_API_KEY must contain at least 24 characters.');
+export function createApp({ apiKey = '', adminPassword = '', publicUrl, dataDir, maxUploadBytes = 25 * 1024 * 1024 }) {
+  if (typeof apiKey !== 'string' || (apiKey && apiKey.length < 24)) throw new Error('PAGES_API_KEY must contain at least 24 characters when configured.');
+  if (typeof adminPassword !== 'string' || (adminPassword && adminPassword.length < 16)) throw new Error('ADMIN_PASSWORD must contain at least 16 characters when configured.');
   const origin = new URL(publicUrl);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
     throw new Error('PUBLIC_URL must be an http(s) origin without a path or credentials.');
@@ -40,7 +42,7 @@ export function createApp({ apiKey, publicUrl, dataDir, maxUploadBytes = 25 * 10
   const store = openStore(resolve(dataDir, 'pages.sqlite'));
   const app = express();
   app.disable('x-powered-by');
-  const expectedKey = digest(apiKey);
+  const expectedKey = apiKey ? digest(apiKey) : null;
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxUploadBytes, files: 1, fields: 0, parts: 1, fieldNameSize: 100, headerPairs: 100 },
@@ -70,8 +72,19 @@ export function createApp({ apiKey, publicUrl, dataDir, maxUploadBytes = 25 * 10
   app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
   app.use('/static', express.static(staticDirectory, { index: false, dotfiles: 'deny' }));
   app.get('/', (req, res) => res.type('html').send(renderHome()));
+  const documentation = (name) => readFileSync(new URL(`../docs/${name}`, import.meta.url), 'utf8');
+  app.get('/docs', (req, res) => res.type('html').send(renderGuide('Pages for agents', documentation('agents.md'))));
+  app.get('/docs/api', (req, res) => res.type('html').send(renderGuide('Pages API reference', documentation('api.md'))));
+  app.get('/llms.txt', (req, res) => res.type('text/plain').send(documentation('agents.md')));
+  app.get('/docs/api.md', (req, res) => res.type('text/markdown').send(documentation('api.md')));
+  app.get('/openapi.json', (req, res) => res.type('application/json').send(documentation('openapi.json')));
+  for (const name of ['pages.py', 'pages.mjs']) {
+    app.get(`/sdk/${name}`, (req, res) => res.download(fileURLToPath(new URL(`../sdk/${name}`, import.meta.url)), name));
+  }
+  if (adminPassword) app.use('/admin', adminRouter({ password: adminPassword, store, pageJson }));
 
   app.use('/api', (req, res, next) => {
+    if (!expectedKey) return next();
     const authorization = req.get('authorization') || '';
     if (!authorization.startsWith('Bearer ') || !timingSafeEqual(expectedKey, digest(authorization.slice(7)))) {
       res.set('WWW-Authenticate', 'Bearer');

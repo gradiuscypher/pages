@@ -1,0 +1,130 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pages API",
+    "version": "1.0.0",
+    "description": "Markdown publication for trusted homelabs. API authentication is deployment-dependent: absent/empty PAGES_API_KEY makes every API operation open; when configured, all /api operations require the exact Bearer key. The optional security alternatives below model these two deployment modes, not anonymous access to a key-protected deployment. Public reads and documentation always require no Pages API credential. Separate browser-only /admin authentication is not an API credential. Writes are not automatically retried or idempotent; multi-request publication is not atomic.",
+    "license": {"name": "MIT"}
+  },
+  "servers": [{"url": "/", "description": "Current Pages origin; returned public URLs use configured PUBLIC_URL"}],
+  "security": [],
+  "tags": [{"name": "Pages"}, {"name": "Assets"}, {"name": "Public"}, {"name": "Discovery"}],
+  "paths": {
+    "/api/pages": {
+      "get": {
+        "operationId": "listPages", "tags": ["Pages"], "summary": "List all page metadata",
+        "description": "Ordered updatedAt descending, then id ascending. No pagination or filtering. Markdown and assets are omitted.",
+        "security": [{}, {"bearerAuth": []}],
+        "responses": {
+          "200": {"description": "All page summaries", "content": {"application/json": {"schema": {"type": "object", "required": ["pages"], "properties": {"pages": {"type": "array", "items": {"$ref": "#/components/schemas/PageSummary"}}}}}}},
+          "401": {"$ref": "#/components/responses/Unauthorized"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
+      "post": {
+        "operationId": "createPage", "tags": ["Pages"], "summary": "Create a page",
+        "description": "Creates a new UUID on each request. Not idempotent. Retain the returned ID before uploading assets. Unknown input properties are ignored.",
+        "security": [{}, {"bearerAuth": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/Document"},
+        "responses": {
+          "201": {"description": "Created page", "headers": {"Location": {"description": "Public HTML URL", "schema": {"type": "string", "format": "uri"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Page"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "413": {"$ref": "#/components/responses/TooLarge"}, "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/pages/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/PageId"}],
+      "get": {
+        "operationId": "getPage", "tags": ["Pages"], "summary": "Read a full page and its assets",
+        "security": [{}, {"bearerAuth": []}],
+        "responses": {"200": {"description": "Full page", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Page"}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "put": {
+        "operationId": "replacePage", "tags": ["Pages"], "summary": "Replace title, description, and Markdown",
+        "description": "Full replacement, not a patch. Omitted description becomes empty. Existing assets remain. Updates are last-write-wins, with no conditional update or version history. Does not upload assets.",
+        "security": [{}, {"bearerAuth": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/Document"},
+        "responses": {"200": {"description": "Updated full page", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Page"}}}}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "413": {"$ref": "#/components/responses/TooLarge"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      },
+      "delete": {
+        "operationId": "deletePage", "tags": ["Pages"], "summary": "Delete a page and all its assets",
+        "description": "Irreversible cascading deletion. Public links stop working; saved copies cannot be revoked. Repeating deletion returns 404.",
+        "security": [{}, {"bearerAuth": []}],
+        "responses": {"204": {"description": "Deleted; empty body"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/pages/{id}/assets": {
+      "parameters": [{"$ref": "#/components/parameters/PageId"}],
+      "post": {
+        "operationId": "uploadAsset", "tags": ["Assets"], "summary": "Upload exactly one attachment",
+        "description": "One file part named file, with filename; no extra fields or parts. Default limit 26214400 bytes, configurable via MAX_UPLOAD_MB. Buffered in memory and stored in SQLite. No aggregate storage quota. Filenames are stripped of directory components/control characters and truncated to 180 UTF-16 code units. Empty, dot, and dot-dot names fail. Duplicate names are allowed and never replace another asset. MIME is signature-detected; only PNG/JPEG/GIF/WebP render inline. Upload touches page updatedAt but does not rewrite Markdown. Retain returned URLs, then replace page Markdown. Inspect page assets after an ambiguous upload before retrying to avoid duplicates.",
+        "security": [{}, {"bearerAuth": []}],
+        "requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"type": "object", "required": ["file"], "additionalProperties": false, "properties": {"file": {"type": "string", "format": "binary", "description": "File bytes with filename; default maximum 25 MiB, configurable"}}}}}},
+        "responses": {"201": {"description": "Uploaded asset", "headers": {"Location": {"description": "Public asset URL", "schema": {"type": "string", "format": "uri"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Asset"}}}}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "413": {"$ref": "#/components/responses/TooLarge"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/api/pages/{id}/assets/{assetId}": {
+      "parameters": [{"$ref": "#/components/parameters/PageId"}, {"name": "assetId", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Asset UUID; must belong to this page"}],
+      "delete": {
+        "operationId": "deleteAsset", "tags": ["Assets"], "summary": "Delete an attachment owned by a page",
+        "description": "Touches page updatedAt but does not rewrite Markdown; existing links may break. A missing asset or one owned by another page returns 404.",
+        "security": [{}, {"bearerAuth": []}],
+        "responses": {"204": {"description": "Deleted; empty body"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/InternalError"}}
+      }
+    },
+    "/p/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/PageId"}],
+      "get": {"operationId": "readPublicPage", "tags": ["Public"], "summary": "Render a public page", "description": "No API key. Sanitized Markdown with highlighting, tables, and Mermaid. This URL is not reader authentication.", "responses": {"200": {"description": "Rendered HTML", "content": {"text/html": {"schema": {"type": "string"}}}}, "404": {"$ref": "#/components/responses/PublicNotFound"}}}
+    },
+    "/p/{id}/source.md": {
+      "parameters": [{"$ref": "#/components/parameters/PageId"}],
+      "get": {"operationId": "downloadSource", "tags": ["Public"], "summary": "Download original public Markdown", "responses": {"200": {"description": "Stored Markdown unchanged", "headers": {"Content-Disposition": {"schema": {"type": "string"}, "description": "Attachment with filename {id}.md"}}, "content": {"text/markdown": {"schema": {"type": "string"}}}}, "404": {"$ref": "#/components/responses/PublicNotFound"}}}
+    },
+    "/assets/{id}/{name}": {
+      "parameters": [{"name": "id", "in": "path", "required": true, "description": "Asset UUID", "schema": {"type": "string"}}, {"name": "name", "in": "path", "required": true, "description": "Exact stored filename, URL encoded; prefer returned url", "schema": {"type": "string"}}, {"name": "download", "in": "query", "description": "Only the value 1 forces attachment disposition for images", "schema": {"type": "string"}}],
+      "get": {"operationId": "readPublicAsset", "tags": ["Public"], "summary": "Read public attachment bytes", "description": "No API key. Supported signature-detected images render inline unless download=1; all other types download. Both forms return the same bytes. Asset CSP is default-src 'none'; sandbox.", "responses": {"200": {"description": "Stored bytes", "headers": {"Content-Disposition": {"schema": {"type": "string"}, "description": "inline or attachment with stored filename"}}, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}, "image/jpeg": {"schema": {"type": "string", "format": "binary"}}, "image/gif": {"schema": {"type": "string", "format": "binary"}}, "image/webp": {"schema": {"type": "string", "format": "binary"}}, "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}, "404": {"$ref": "#/components/responses/PublicNotFound"}}}
+    },
+    "/": {"get": {"operationId": "home", "tags": ["Public"], "summary": "Formatting showcase, not a public page index", "responses": {"200": {"description": "HTML showcase", "content": {"text/html": {"schema": {"type": "string"}}}}}}},
+    "/healthz": {"get": {"operationId": "health", "tags": ["Public"], "summary": "Health check", "responses": {"200": {"description": "Service responding", "content": {"application/json": {"schema": {"type": "object", "required": ["status"], "properties": {"status": {"const": "ok"}}}}}}}}},
+    "/docs": {"get": {"operationId": "renderDocumentation", "tags": ["Discovery"], "summary": "Rendered agent documentation", "responses": {"200": {"description": "HTML instructions", "content": {"text/html": {"schema": {"type": "string"}}}}}}},
+    "/llms.txt": {"get": {"operationId": "agentInstructions", "tags": ["Discovery"], "summary": "LLM-friendly Markdown instructions", "responses": {"200": {"description": "Agent instructions", "content": {"text/plain": {"schema": {"type": "string"}}}}}}},
+    "/docs/api": {"get": {"operationId": "renderApiReference", "tags": ["Discovery"], "summary": "Rendered API reference", "responses": {"200": {"description": "HTML API reference", "content": {"text/html": {"schema": {"type": "string"}}}}}}},
+    "/docs/api.md": {"get": {"operationId": "apiReference", "tags": ["Discovery"], "summary": "Authoritative API reference", "responses": {"200": {"description": "Markdown API reference", "content": {"text/markdown": {"schema": {"type": "string"}}}}}}},
+    "/openapi.json": {"get": {"operationId": "openApiDocument", "tags": ["Discovery"], "summary": "OpenAPI 3.1 contract", "responses": {"200": {"description": "This OpenAPI document", "content": {"application/json": {"schema": {"type": "object"}}}}}}},
+    "/sdk/pages.py": {"get": {"operationId": "downloadPythonClient", "tags": ["Discovery"], "summary": "Download complete dependency-free Python 3.8+ client", "responses": {"200": {"description": "Python source attachment", "content": {"*/*": {"schema": {"type": "string"}}}}}}},
+    "/sdk/pages.mjs": {"get": {"operationId": "downloadJavaScriptClient", "tags": ["Discovery"], "summary": "Download complete dependency-free Node.js 24+ ES module", "responses": {"200": {"description": "JavaScript source attachment", "content": {"*/*": {"schema": {"type": "string"}}}}}}}
+  },
+  "components": {
+    "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "description": "Required on all /api routes only when server PAGES_API_KEY is nonempty. Exact configured key; no JWT or scopes. Absent/empty configuration makes the API fully open."}},
+    "parameters": {"PageId": {"name": "id", "in": "path", "required": true, "description": "Page UUID returned by create; unknown IDs return 404", "schema": {"type": "string"}}},
+    "requestBodies": {"Document": {"required": true, "description": "Complete document object. JSON body maximum 1126400 bytes including syntax/escaping; independent of Markdown byte limit.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DocumentInput"}}}}},
+    "schemas": {
+      "DocumentInput": {
+        "type": "object", "required": ["title", "markdown"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Nonblank after trimming; limit is 200 JavaScript UTF-16 code units before trimming (stricter than Unicode code-point maxLength for astral characters). Stored trimmed."},
+          "description": {"type": "string", "maxLength": 500, "default": "", "description": "Limit is 500 JavaScript UTF-16 code units before trimming. Stored trimmed. Omission clears description on replacement."},
+          "markdown": {"type": "string", "description": "Required; may be empty. At most 1048576 UTF-8 bytes; not a character limit. Stored unchanged.", "x-maxUtf8Bytes": 1048576}
+        },
+        "description": "Unknown properties are ignored. Null, arrays, wrong property types, and missing required fields fail validation."
+      },
+      "PageSummary": {
+        "type": "object", "required": ["id", "title", "description", "createdAt", "updatedAt", "url"],
+        "properties": {"id": {"type": "string", "format": "uuid"}, "title": {"type": "string"}, "description": {"type": "string"}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}, "url": {"type": "string", "format": "uri", "description": "Absolute public HTML URL using configured PUBLIC_URL"}}
+      },
+      "Page": {"allOf": [{"$ref": "#/components/schemas/PageSummary"}, {"type": "object", "required": ["markdown", "assets"], "properties": {"markdown": {"type": "string"}, "assets": {"type": "array", "description": "Upload order", "items": {"$ref": "#/components/schemas/Asset"}}}}]},
+      "Asset": {
+        "type": "object", "required": ["id", "pageId", "name", "mime", "size", "url", "downloadUrl"],
+        "properties": {"id": {"type": "string", "format": "uuid"}, "pageId": {"type": "string", "format": "uuid"}, "name": {"type": "string", "description": "Sanitized stored basename"}, "mime": {"type": "string", "enum": ["image/png", "image/jpeg", "image/gif", "image/webp", "application/octet-stream"]}, "size": {"type": "integer", "minimum": 0, "description": "Byte size"}, "url": {"type": "string", "format": "uri"}, "downloadUrl": {"type": "string", "format": "uri", "description": "Public URL with download=1"}}
+      },
+      "Error": {"type": "object", "required": ["error"], "properties": {"error": {"type": "string"}}, "description": "Human-readable message; not a stable machine error code"}
+    },
+    "responses": {
+      "BadRequest": {"description": "Invalid fields/JSON, malformed request, or invalid multipart upload. One file in field file is required; extra parts are rejected.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Unauthorized": {"description": "Configured API key is missing or incorrect. Authentication precedes body parsing.", "headers": {"WWW-Authenticate": {"schema": {"type": "string", "const": "Bearer"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "NotFound": {"description": "Page missing, attachment missing/not owned by page, or unknown API route", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "TooLarge": {"description": "JSON body exceeds 1126400 bytes or uploaded file exceeds configured limit", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "InternalError": {"description": "Unexpected server failure", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "PublicNotFound": {"description": "Public page/asset missing; asset filename must match exactly", "content": {"text/html": {"schema": {"type": "string"}}}}
+    }
+  }
+}

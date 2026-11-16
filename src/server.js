@@ -7,6 +7,7 @@ if (!Number.isSafeInteger(maxUploadMb) || maxUploadMb < 1) throw new Error('MAX_
 const host = process.env.HOST || '127.0.0.1';
 const { app, close } = createApp({
   apiKey: process.env.PAGES_API_KEY,
+  adminPassword: process.env.ADMIN_PASSWORD,
   publicUrl: process.env.PUBLIC_URL || `http://localhost:${port}`,
   dataDir: process.env.DATA_DIR || './data',
   maxUploadBytes: maxUploadMb * 1024 * 1024,

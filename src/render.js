@@ -82,7 +82,7 @@ function shell({ title, description = '', body, kind = 'document' }) {
 </head>
 <body class="${kind}">
 <a class="skip-link" href="#main">Skip to content</a>
-<header class="site-header"><a class="wordmark" href="/" aria-label="Pages home"><span class="brand-mark" aria-hidden="true">p.</span>pages<span class="brand-note">/ a place for the details</span></a><div class="header-actions"><button type="button" class="theme-toggle" aria-label="Switch color theme" aria-pressed="false" hidden>Dark theme</button></div></header>
+<header class="site-header"><a class="wordmark" href="/" aria-label="Pages home"><span class="brand-mark" aria-hidden="true">p.</span>pages<span class="brand-note">/ a place for the details</span></a><div class="header-actions"><a class="text-action" href="/docs">Docs</a><a class="text-action" href="/admin">Admin</a><button type="button" class="theme-toggle" aria-label="Switch color theme" aria-pressed="false" hidden>Dark theme</button></div></header>
 ${body}
 <footer class="site-footer"><span>Small documents. Durable links.</span><a href="https://grds.io/" rel="noopener noreferrer">GRDS-inspired / built to read</a></footer>
 </body>
@@ -156,7 +156,8 @@ flowchart LR
 const response = await fetch('http://localhost:3000/api/pages', {
   method: 'POST',
   headers: {
-    Authorization: \`Bearer \${process.env.PAGES_API_KEY}\`,
+    ...(process.env.PAGES_API_KEY
+      ? { Authorization: \`Bearer \${process.env.PAGES_API_KEY}\` } : {}),
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
@@ -176,7 +177,7 @@ console.log(url); // Your public reading link
 - **Yours to keep.** Download the source, save attachments, or print.
 - **Comfortable by default.** Light and dark themes, on any screen.
 
-This is an illustrative preview, not a stored document. Published pages are available only through their individual links.
+This is an illustrative preview, not a stored document. Read the [agent guide](/docs) for downloadable clients and the API reference. Published documents have individual reading links; the API and password-protected [admin dashboard](/admin) provide the page index.
 `;
 
 export function renderHome() {
@@ -191,4 +192,18 @@ export function renderHome() {
 
 export function renderError(status, message) {
   return shell({ title: `${status} · ${message}`, body: `<main id="main" class="error-page"><p class="eyebrow">${escape(status)} / Nothing here to read</p><h1>${escape(message)}</h1><p>The link may be incomplete, or this document may no longer be available.</p><a class="primary-action" href="/">Back to Pages <span aria-hidden="true">↗</span></a></main>` });
+}
+
+export function renderGuide(title, source) {
+  const { html, headings } = renderMarkdown(source);
+  return shell({ title, body: `<main id="main" class="document-layout"><article class="document-body"><header class="document-header"><h1 class="document-title">${escape(title)}</h1><div class="document-actions"><a href="/llms.txt">LLM instructions</a> · <a href="/docs/api.md">API reference</a> · <a href="/openapi.json">OpenAPI</a></div></header><div class="prose">${html}</div></article>${tableOfContents(headings)}</main>` });
+}
+
+export function renderAdmin(pages) {
+  const rows = pages.map((page) => `<tr><td><a href="/p/${escape(page.id)}">${escape(page.title)}</a><p>${escape(page.description)}</p><small>${escape(page.id)}</small></td><td>${timestamp(page.updatedAt)}</td><td><a href="/admin/pages/${escape(page.id)}/delete">Review deletion</a></td></tr>`).join('');
+  return shell({ title: 'Administration', body: `<main id="main" class="document-layout"><article class="document-body"><header class="document-header"><p class="eyebrow">Administration</p><h1 class="document-title">All pages</h1><p>${pages.length} published pages. Open a title to review its content. Deletion permanently removes the page and all attachments.</p><p>The admin password protects this dashboard only. An instance without an API key allows anyone with network access to manage pages through the API.</p></header><div class="prose">${pages.length ? `<table><thead><tr><th>Page</th><th>Updated</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No pages published.</p>'}</div></article></main>` });
+}
+
+export function renderDeleteConfirmation(page, csrf) {
+  return shell({ title: 'Confirm deletion', body: `<main id="main" class="document-layout"><article class="document-body"><header class="document-header"><p class="eyebrow">Permanent deletion</p><h1 class="document-title">${escape(page.title)}</h1><p>${escape(page.description)}</p></header><div class="prose"><p>Delete this page, its Markdown source, and all ${page.assets.length} attachments? Saved reader copies cannot be revoked.</p><p><a href="/p/${escape(page.id)}">Review published page</a> · <a href="/p/${escape(page.id)}/source.md">Download source</a></p>${attachments(page.assets)}<form method="post" action="/admin/pages/${escape(page.id)}/delete"><input type="hidden" name="csrf" value="${escape(csrf)}"><button class="primary-action" type="submit">Permanently delete page</button> <a href="/admin">Cancel</a></form></div></article></main>` });
 }

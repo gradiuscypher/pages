@@ -42,6 +42,8 @@ def http_url(value, label, *, base=False):
             and parsed.password is None
             and not parsed.fragment
             and not any(character.isspace() or ord(character) < 32 for character in value)
+            and (not base or parsed.path in ("", "/"))
+            and "\\" not in value
         )
         parsed.port
     except ValueError:
@@ -85,22 +87,26 @@ class Client:
         return config
 
     def __init__(self, timeout):
-        config = self.stored_config() if not (os.environ.get("PAGES_API_KEY") and os.environ.get("PAGES_URL")) else {}
-        self.key = os.environ.get("PAGES_API_KEY") or config.get("apiKey", "")
-        if not isinstance(self.key, str) or not self.key or any(ord(character) < 33 or ord(character) > 126 for character in self.key):
-            raise PublishError("Configure PAGES_API_KEY or the private Pages client.json (printable ASCII, no whitespace)")
-        self.base = http_url(os.environ.get("PAGES_URL") or config.get("url", ""), "Pages URL", base=True)
+        configured = "PAGES_URL" in os.environ and "PAGES_API_KEY" in os.environ
+        config = {} if configured else self.stored_config()
+        self.key = os.environ.get("PAGES_API_KEY", config.get("apiKey", ""))
+        if not isinstance(self.key, str) or any(ord(character) < 33 or ord(character) > 126 for character in self.key):
+            raise PublishError("PAGES_API_KEY or client.json apiKey must be printable ASCII without whitespace, or empty")
+        self.base = http_url(os.environ.get("PAGES_URL", config.get("url", "")), "Pages URL", base=True)
         self.timeout = timeout
         self.opener = urllib.request.build_opener(NoRedirects())
 
     def redact(self, value):
         text = str(value)
-        for secret in sorted({self.key, urllib.parse.quote(self.key, safe=""), json.dumps(self.key)[1:-1]}, key=len, reverse=True):
+        secrets = {self.key, urllib.parse.quote(self.key, safe=""), json.dumps(self.key)[1:-1]} - {""}
+        for secret in sorted(secrets, key=len, reverse=True):
             text = text.replace(secret, "[REDACTED]")
         return text
 
     def request(self, method, route, payload=None, *, body=None, content_type=None):
-        headers = {"Authorization": f"Bearer {self.key}", "Accept": "application/json"}
+        headers = {"Accept": "application/json"}
+        if self.key:
+            headers["Authorization"] = f"Bearer {self.key}"
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
             content_type = "application/json"
@@ -235,9 +241,10 @@ def publish(client, args):
 
 def parser():
     root = argparse.ArgumentParser(
-        description="Publish Markdown to Pages using environment variables or private client.json credentials.",
+        description="Publish Markdown to Pages using environment variables or private client.json configuration.",
         epilog="PAGES_URL and PAGES_API_KEY override ~/.config/grds-pages/client.json "
-               "(or $XDG_CONFIG_HOME/grds-pages/client.json). Requests do not follow redirects. "
+               "(or $XDG_CONFIG_HOME/grds-pages/client.json), including an explicitly empty key. "
+               "Keys are optional on open servers. Requests do not follow redirects. "
                "Public URLs need no bearer key. See each command's --help.",
     )
     root.add_argument("--timeout", type=positive_timeout, default=30, metavar="SECONDS", help="per-request timeout (default: 30)")

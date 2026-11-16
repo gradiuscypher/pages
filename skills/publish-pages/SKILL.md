@@ -9,9 +9,11 @@ Publish technical reports through the bundled Python 3 standard-library helper, 
 
 ## 1. Establish access and audience
 
-The portable installer stores the server URL and bearer key in `~/.config/grds-pages/client.json` (or `$XDG_CONFIG_HOME/grds-pages/client.json`) with mode `0600`. The helper loads it automatically; check access with `scripts/pages.py list` without displaying the configuration. `PAGES_URL` and `PAGES_API_KEY` override the corresponding stored values when set. For manual configuration, supply both environment variables. The URL must be an absolute HTTP/HTTPS origin without credentials, query, or fragment; use HTTPS outside trusted local networks. The server's `PUBLIC_URL` determines returned public URLs and can differ from the agent's configured URL.
+The portable installer stores the server URL and optional bearer key in `~/.config/grds-pages/client.json` (or `$XDG_CONFIG_HOME/grds-pages/client.json`) with mode `0600`. The helper loads it automatically; check access with `scripts/pages.py list` without displaying the configuration. `PAGES_URL` and `PAGES_API_KEY` override the corresponding stored values when set; an explicitly empty `PAGES_API_KEY` clears a stored key. The URL must be an absolute HTTP/HTTPS origin without credentials, path, query, or fragment; use HTTPS outside trusted local networks. The server's `PUBLIC_URL` determines returned public URLs and can differ from the agent's configured URL.
 
-Prefer environment injection from a trusted secret manager. For an interactive Bash session, collect the key without echoing it or putting it in command history:
+Authentication is opt-in: when the server has no API key configured, the entire API—including listing, editing, and deleting pages—is open to anyone who can reach it. For an open server, configure only `PAGES_URL` (and set `PAGES_API_KEY=''` if overriding an old stored key). When the server configures a key, supply that exact value; the admin dashboard password is separate and is not an API key.
+
+For a keyed server, prefer environment injection from a trusted secret manager. For an interactive Bash session, collect the key without echoing it or putting it in command history:
 
 ```bash
 set +x
@@ -25,7 +27,7 @@ Keep the key in the private configuration or injected environment, not command a
 
 **Audience gate:** page HTML, Markdown source, and assets are publicly readable by anyone with their unguessable URLs. There is no per-reader login, and an unlisted link is not access control. Remove secrets and private data before publication. Sensitive artifacts require a network restriction around the service (for example, a private network or an access-controlled reverse proxy) before publishing.
 
-Proceed when private configuration or environment credentials are available and the report is suitable for everyone who can reach its URL.
+Proceed when the server URL and any required API key are configured and the report is suitable for everyone who can reach its URL.
 
 ## 2. Author the report
 
@@ -104,7 +106,7 @@ python3 ~/.agents/skills/publish-pages/scripts/pages.py show PAGE_UUID
 python3 ~/.agents/skills/publish-pages/scripts/pages.py upload PAGE_UUID ./appendix.pdf
 ```
 
-`list` returns authenticated page metadata; `show` returns the full page; `upload` returns the new asset's JSON without editing Markdown. Use `show` to confirm persisted content and asset URLs. Then fetch the returned public page URL **without** the API key, open it in a browser, and check the report's headings, table, code, Mermaid diagram, image, and download as applicable. The public Markdown source is at `/p/PAGE_UUID/source.md` on the public server. Use returned asset URLs rather than constructing them.
+`list` returns page metadata; `show` returns the full page; `upload` returns the new asset's JSON without editing Markdown. These API calls require the bearer key only on keyed servers. Use `show` to confirm persisted content and asset URLs. Then fetch the returned public page URL **without** the API key, open it in a browser, and check the report's headings, table, code, Mermaid diagram, image, and download as applicable. The public Markdown source is at `/p/PAGE_UUID/source.md` on the public server. Use returned asset URLs rather than constructing them.
 
 Completion means the publish command succeeded, persisted content was inspected, and the public URL and relevant assets were verified. Return the public page URL and a brief account of what was actually checked. If public access or browser verification cannot be exercised, report that limit explicitly rather than claiming it passed.
 
@@ -120,4 +122,6 @@ Deletion permanently removes the page, Markdown source, and all its attachments 
 
 ## Portable installation
 
-Run the provided single-file installer with Python 3 on each host; it installs this skill and its private configuration without modifying shell startup files. The installer contains the publishing key: transfer it securely, keep it mode `0600`, and remove the copied installer after use. Alternatively, copy this complete `publish-pages` directory, including `scripts/`, into `~/.agents/skills/` and configure credentials manually. Start a new omp session to reload skill discovery. No Python packages are required.
+Run the provided single-file installer with Python 3 on each host; it installs this skill and its private configuration without modifying shell startup files. The installer may contain a publishing key: transfer it securely, keep it mode `0600`, and remove the copied installer after use. Keyless server configurations are supported. Alternatively, copy this complete `publish-pages` directory, including `scripts/`, into `~/.agents/skills/` and configure the URL and optional key manually. Start a new omp session to reload skill discovery. No Python packages are required.
+
+For programmatic use, the server serves usage instructions at `/docs`, API details at `/docs/api.md`, and complete dependency-free clients at `/sdk/pages.py` (Python 3.8+) and `/sdk/pages.mjs` (Node.js 24). Download from the configured trusted server; their module documentation lists method signatures. These libraries accept explicit URL/key arguments and do not read the helper's private configuration.
