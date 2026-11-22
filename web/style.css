@@ -79,7 +79,7 @@ img { max-width: 100%; height: auto; }
 .site-footer { max-width: 1328px; margin: 0 auto; padding: 2rem 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 1rem; font-size: 10px; color: var(--muted); }
 .site-footer a { color: var(--muted); text-decoration: none; }
 .eyebrow { margin: 0 0 1.4rem; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .16em; font-weight: 500; }
-.document-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 200px); gap: clamp(2rem, 4vw, 4rem); padding: 5rem clamp(2rem, 4vw, 3.5rem) 7rem; align-items: start; }
+.document-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 200px); gap: clamp(2rem, 4vw, 4rem); padding: 5rem clamp(4rem, 8vw, 7rem) 7rem; align-items: start; }
 .document-body { min-width: 0; }
 .document-header { border-bottom: 1px solid var(--border); padding-bottom: 2rem; margin-bottom: 3rem; }
 .document-title { margin: 0 0 1.3rem; font-size: clamp(30px, 3.5vw, 46px); font-weight: 500; line-height: 1.2; letter-spacing: -.065em; overflow-wrap: anywhere; }
@@ -88,10 +88,10 @@ img { max-width: 100%; height: auto; }
 .document-actions { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.5rem; }
 .text-action { border: 0; padding: 0; background: none; text-decoration: none; color: var(--blue); font-size: 11px; display: inline-flex; align-items: center; gap: .8rem; }
 .text-action:hover { color: var(--pink); }
-.toc { position: sticky; top: 2.5rem; padding-top: .25rem; }
-.toc .eyebrow { margin-bottom: 1rem; }
+.toc { position: sticky; top: 2.5rem; padding-top: .25rem; font-size: 1.25rem; overflow-wrap: anywhere; }
+.toc .eyebrow { margin-bottom: 1rem; font-size: inherit; }
 .toc ol { list-style: none; padding: 0; margin: 0; border-left: 1px solid var(--border); }
-.toc li { margin: 0; font-size: 10px; line-height: 1.7; }
+.toc li { margin: 0; line-height: 1.5; }
 .toc a { display: block; text-decoration: none; color: var(--muted); padding: .4rem 0 .4rem 1rem; }
 .toc a:hover, .toc a:focus { color: var(--blue); }
 .toc .toc-level-3 a { padding-left: 1.6rem; }
@@ -195,7 +195,7 @@ img { max-width: 100%; height: auto; }
   .site-header { padding: 1.2rem 1.25rem; }
   .theme-toggle { font-size: 10px; padding: .45rem .6rem; }
   .site-footer { margin: 0 1.25rem; padding: 1.5rem 0; flex-direction: column; gap: .4rem; font-size: 9px; }
-  .document-layout { padding: 2rem 1.25rem 4rem; }
+  .document-layout { padding: 2rem 2.5rem 4rem; }
   .document-header { padding-bottom: 1.5rem; margin-bottom: 2rem; }
   .document-description { font-size: 13px; }
   .document-meta { font-size: 9px; }
