@@ -79,7 +79,7 @@ img { max-width: 100%; height: auto; }
 .site-footer { max-width: 1328px; margin: 0 auto; padding: 2rem 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 1rem; font-size: 10px; color: var(--muted); }
 .site-footer a { color: var(--muted); text-decoration: none; }
 .eyebrow { margin: 0 0 1.4rem; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .16em; font-weight: 500; }
-.document-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 200px); gap: clamp(2rem, 4vw, 4rem); padding: 5rem clamp(4rem, 8vw, 7rem) 7rem; align-items: start; }
+.document-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 200px); gap: clamp(2rem, 4vw, 4rem); padding: 5rem clamp(8rem, 16vw, 14rem) 7rem; align-items: start; }
 .document-body { min-width: 0; }
 .document-header { border-bottom: 1px solid var(--border); padding-bottom: 2rem; margin-bottom: 3rem; }
 .document-title { margin: 0 0 1.3rem; font-size: clamp(30px, 3.5vw, 46px); font-weight: 500; line-height: 1.2; letter-spacing: -.065em; overflow-wrap: anywhere; }
@@ -195,7 +195,7 @@ img { max-width: 100%; height: auto; }
   .site-header { padding: 1.2rem 1.25rem; }
   .theme-toggle { font-size: 10px; padding: .45rem .6rem; }
   .site-footer { margin: 0 1.25rem; padding: 1.5rem 0; flex-direction: column; gap: .4rem; font-size: 9px; }
-  .document-layout { padding: 2rem 2.5rem 4rem; }
+  .document-layout { padding: 2rem 5rem 4rem; }
   .document-header { padding-bottom: 1.5rem; margin-bottom: 2rem; }
   .document-description { font-size: 13px; }
   .document-meta { font-size: 9px; }
