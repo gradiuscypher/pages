@@ -57,6 +57,49 @@ document.querySelectorAll('.print-button').forEach((button) => {
   button.addEventListener('click', () => window.print());
 });
 
+for (const toc of document.querySelectorAll('.toc')) {
+  const sections = Array.from(toc.querySelectorAll('a[href^="#"]'), link => ({
+    link, heading: document.getElementById(link.hash.slice(1)),
+  })).filter(section => section.heading);
+  if (!sections.length) continue;
+
+  let active;
+  let pending = false;
+  function update() {
+    pending = false;
+    // Match the browser's anchor landing position, including heading scroll-margin.
+    const line = parseFloat(getComputedStyle(root).scrollPaddingTop)
+      + parseFloat(getComputedStyle(sections[0].heading).scrollMarginTop) + 1;
+    let lo = 0, hi = sections.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (sections[mid].heading.getBoundingClientRect().top <= line) lo = mid + 1;
+      else hi = mid;
+    }
+    const atEnd = window.scrollY > 0 && window.scrollY + root.clientHeight >= root.scrollHeight - 1;
+    const next = sections[atEnd ? sections.length - 1 : Math.max(0, lo - 1)].link;
+    if (next === active) return;
+    active?.removeAttribute('aria-current');
+    active = next;
+    active.setAttribute('aria-current', 'location');
+
+    // Move only the navigation pane, never the article or keyboard focus.
+    const pane = toc.getBoundingClientRect();
+    const item = active.getBoundingClientRect();
+    if (item.top < pane.top) toc.scrollTop += item.top - pane.top;
+    else if (item.bottom > pane.bottom) toc.scrollTop += item.bottom - pane.bottom;
+  }
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(update);
+  }
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+  new ResizeObserver(schedule).observe(toc.parentElement.querySelector('.document-body'));
+  update();
+}
+
 // Make horizontally scrolling code and tables reachable without a pointer.
 document.querySelectorAll('.prose pre, .prose table, .mermaid-output').forEach((element) => {
   element.tabIndex = 0;

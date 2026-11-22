@@ -93,12 +93,13 @@ img { max-width: 100%; height: auto; }
 .document-actions { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.5rem; }
 .text-action { border: 0; padding: 0; background: none; text-decoration: none; color: var(--blue); font-size: 11px; display: inline-flex; align-items: center; gap: .8rem; }
 .text-action:hover { color: var(--pink); }
-.toc { position: sticky; top: 2.5rem; padding-top: .25rem; font-size: 1.25rem; overflow-wrap: anywhere; }
+.toc { position: sticky; top: 2.5rem; max-height: calc(100dvh - 5rem); overflow-y: auto; overscroll-behavior-y: contain; padding-top: .25rem; font-size: 1.25rem; overflow-wrap: anywhere; }
 .toc .eyebrow { margin-bottom: 1rem; font-size: inherit; }
 .toc ol { list-style: none; padding: 0; margin: 0; border-left: 1px solid var(--border); }
 .toc li { margin: 0; line-height: 1.5; }
 .toc a { display: block; text-decoration: none; color: var(--muted); padding: .4rem 0 .4rem 1rem; }
 .toc a:hover, .toc a:focus { color: var(--blue); }
+.toc a[aria-current="location"] { color: var(--blue); background: var(--surface); font-weight: 600; }
 .toc .toc-level-3 a { padding-left: 1.6rem; }
 .toc .toc-level-4 a, .toc .toc-level-5 a, .toc .toc-level-6 a { padding-left: 2.2rem; }
 .prose { overflow-wrap: anywhere; }
@@ -193,7 +194,7 @@ img { max-width: 100%; height: auto; }
 }
 @media (max-width: 960px) {
   .document-layout { grid-template-columns: minmax(0, 1fr); padding-top: 3.5rem; }
-  .toc { position: static; grid-row: 1; padding: 0 0 1.5rem; border-bottom: 1px solid var(--border); }
+  .toc { position: static; grid-row: 1; max-height: 45dvh; padding: 0 0 1.5rem; border-bottom: 1px solid var(--border); }
   .toc ol { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; border: 0; }
   .toc a, .toc .toc-level-3 a, .toc .toc-level-4 a, .toc .toc-level-5 a, .toc .toc-level-6 a { padding: .2rem 0; }
   .toc .eyebrow { margin-bottom: .5rem; }

@@ -8,6 +8,8 @@ An artifact publisher for agents. Publish Markdown as readable HTML pages with l
 
 Reading text defaults to 18px. The **Text size** selector in the top-right corner remembers your choice in this browser. On desktop, Pages reserves wider margins and uses the extra right-hand space for the sticky table of contents. At viewport widths of 960px or less, the table of contents moves above the article.
 
+The table of contents highlights the section being read and keeps its link in view as you move between sections. You can scroll the list independently without moving the article.
+
 The palette follows [grds.io](https://grds.io/). Typography uses locally installed Berkeley Mono when available and bundled IBM Plex Mono otherwise. Berkeley Mono font files are not distributed.
 
 ## Run
