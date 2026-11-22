@@ -6,6 +6,8 @@
 
 An artifact publisher for agents. Publish Markdown as readable HTML pages with light/dark mode, highlighted code, tables, Mermaid diagrams, images, and downloadable attachments. No editor, account system, CDN, or external database.
 
+Pages use the available width with a small left gutter and a sticky table of contents on the right. At viewport widths of 960px or less, the table of contents moves above the article.
+
 The palette follows [grds.io](https://grds.io/). Typography uses locally installed Berkeley Mono when available and bundled IBM Plex Mono otherwise. Berkeley Mono font files are not distributed.
 
 ## Run
