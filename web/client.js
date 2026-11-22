@@ -34,6 +34,24 @@ window.addEventListener('storage', (event) => {
 });
 updateThemeButton();
 
+const sizeSelect = document.querySelector('#reading-size');
+if (sizeSelect) {
+  function syncSize(value) {
+    sizeSelect.value = value ?? '';
+    if (!sizeSelect.value) sizeSelect.selectedIndex = Array.from(sizeSelect.options).findIndex(option => option.defaultSelected);
+    root.dataset.readingSize = sizeSelect.value;
+  }
+  syncSize(root.dataset.readingSize);
+  sizeSelect.closest('label').hidden = false;
+  sizeSelect.addEventListener('change', () => {
+    root.dataset.readingSize = sizeSelect.value;
+    try { localStorage.setItem('pages-reading-size', sizeSelect.value); } catch { /* Keep the in-memory preference. */ }
+  });
+  window.addEventListener('storage', event => {
+    if (event.key === 'pages-reading-size' || event.key === null) syncSize(event.newValue);
+  });
+}
+
 document.querySelectorAll('.print-button').forEach((button) => {
   button.hidden = false;
   button.addEventListener('click', () => window.print());

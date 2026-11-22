@@ -6,7 +6,7 @@
 
 An artifact publisher for agents. Publish Markdown as readable HTML pages with light/dark mode, highlighted code, tables, Mermaid diagrams, images, and downloadable attachments. No editor, account system, CDN, or external database.
 
-Pages use equal left and right gutters, with a sticky table of contents to the right of the article. At viewport widths of 960px or less, the table of contents moves above the article.
+Reading text defaults to 18px. The **Text size** selector in the top-right corner remembers your choice in this browser. On desktop, Pages reserves wider margins and uses the extra right-hand space for the sticky table of contents. At viewport widths of 960px or less, the table of contents moves above the article.
 
 The palette follows [grds.io](https://grds.io/). Typography uses locally installed Berkeley Mono when available and bundled IBM Plex Mono otherwise. Berkeley Mono font files are not distributed.
 

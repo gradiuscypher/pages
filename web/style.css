@@ -31,6 +31,9 @@
   --selection: #dce6ff;
   --font: "Berkeley Mono", "Berkeley Mono Variable", "IBM Plex Mono", monospace;
 }
+:root[data-reading-size="16"] { --reading-size: 16px; }
+:root[data-reading-size="20"] { --reading-size: 20px; }
+:root[data-reading-size="24"] { --reading-size: 24px; }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #090e1a;
@@ -57,7 +60,7 @@
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 2rem; }
-body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--reading-size, 18px); line-height: 1.8; -webkit-font-smoothing: antialiased; }
 ::selection { background: var(--selection); color: var(--fg); }
 a { color: var(--blue); text-underline-offset: .22em; text-decoration-thickness: 1px; overflow-wrap: anywhere; }
 a:hover { color: var(--pink); }
@@ -72,7 +75,9 @@ img { max-width: 100%; height: auto; }
 .wordmark { color: var(--fg); display: inline-flex; align-items: center; gap: .8rem; text-decoration: none; font-size: 18px; font-weight: 600; letter-spacing: -.06em; }
 .brand-mark { display: inline-grid; place-items: center; width: 31px; height: 31px; background: var(--fg); color: var(--bg); font-size: 22px; padding-bottom: 5px; letter-spacing: -.1em; }
 .brand-note { color: var(--muted); margin-left: 1rem; font-size: 11px; font-weight: 400; letter-spacing: 0; }
-.header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 1rem; }
+.font-control { font-size: 12px; white-space: nowrap; }
+.font-control select { color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: .4rem; font: inherit; }
 .theme-toggle { background: transparent; border: 1px solid var(--border); border-radius: 3px; padding: .4rem .75rem; font-size: 11px; white-space: nowrap; }
 .theme-toggle::before { content: "◐"; margin-right: .6rem; font-size: 13px; }
 .theme-toggle:hover { border-color: var(--blue); color: var(--blue); }
@@ -101,11 +106,11 @@ img { max-width: 100%; height: auto; }
 .prose > :last-child { margin-bottom: 0; }
 .prose p { margin: 1.25rem 0; }
 .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 { line-height: 1.4; font-weight: 500; letter-spacing: -.04em; margin: 2.8rem 0 1.2rem; scroll-margin-top: 2rem; }
-.prose h1 { font-size: 29px; }
-.prose h2 { font-size: 23px; }
-.prose h3 { font-size: 18px; }
-.prose h4 { font-size: 16px; }
-.prose h5, .prose h6 { font-size: 14px; }
+.prose h1 { font-size: 2em; }
+.prose h2 { font-size: 1.6em; }
+.prose h3 { font-size: 1.3em; }
+.prose h4 { font-size: 1.15em; }
+.prose h5, .prose h6 { font-size: 1em; }
 .prose strong { font-weight: 600; }
 .prose ul, .prose ol { padding-left: 1.6rem; margin: 1.25rem 0; }
 .prose li { padding-left: .2rem; margin: .5rem 0; }
@@ -115,10 +120,10 @@ img { max-width: 100%; height: auto; }
 .prose blockquote p { margin: .8rem 0; }
 .prose hr { border: 0; border-top: 1px solid var(--border); margin: 3rem 0; }
 .prose code, .publishing-intro code { font: inherit; font-size: .9em; color: var(--pink); background: var(--surface); padding: .15rem .35rem; border-radius: 2px; }
-.prose pre { border: 1px solid var(--border); background: var(--surface); padding: 1.4rem; border-radius: 3px; overflow: auto; font-size: 12px; line-height: 1.8; margin: 1.6rem 0; tab-size: 2; overflow-wrap: normal; }
+.prose pre { border: 1px solid var(--border); background: var(--surface); padding: 1.4rem; border-radius: 3px; overflow: auto; font-size: .875em; line-height: 1.8; margin: 1.6rem 0; tab-size: 2; overflow-wrap: normal; }
 .prose pre code { background: none; color: var(--fg); font-size: inherit; padding: 0; border-radius: 0; }
 .prose pre:focus-visible { outline-offset: 3px; }
-.prose table { display: block; width: 100%; overflow: auto; border-collapse: collapse; font-size: 12px; margin: 1.8rem 0; line-height: 1.8; }
+.prose table { display: block; width: 100%; overflow: auto; border-collapse: collapse; font-size: .875em; margin: 1.8rem 0; line-height: 1.8; }
 .prose th, .prose td { padding: .85rem 1rem; border: 1px solid var(--border); text-align: left; min-width: 130px; vertical-align: top; }
 .prose th { font-weight: 500; background: var(--surface); }
 .prose th[align="center"], .prose td[align="center"] { text-align: center; }
@@ -179,6 +184,13 @@ img { max-width: 100%; height: auto; }
   .site-footer { margin-left: 3.5rem; margin-right: 3.5rem; }
   .publishing-intro, .preview-shell { margin-left: 3.5rem; margin-right: 3.5rem; }
 }
+@media screen and (min-width: 961px) {
+  main.document-layout {
+    --extra-gutter: clamp(4rem, 8vw, 7rem);
+    padding-left: calc(3 * var(--extra-gutter));
+    grid-template-columns: minmax(0, 1fr) calc(200px + var(--extra-gutter));
+  }
+}
 @media (max-width: 960px) {
   .document-layout { grid-template-columns: minmax(0, 1fr); padding-top: 3.5rem; }
   .toc { position: static; grid-row: 1; padding: 0 0 1.5rem; border-bottom: 1px solid var(--border); }
@@ -191,7 +203,6 @@ img { max-width: 100%; height: auto; }
   .preview-shell .document-layout { gap: 2rem; }
 }
 @media (max-width: 600px) {
-  body { font-size: 12px; }
   .site-header { padding: 1.2rem 1.25rem; }
   .theme-toggle { font-size: 10px; padding: .45rem .6rem; }
   .site-footer { margin: 0 1.25rem; padding: 1.5rem 0; flex-direction: column; gap: .4rem; font-size: 9px; }
@@ -201,11 +212,7 @@ img { max-width: 100%; height: auto; }
   .document-meta { font-size: 9px; }
   .document-actions { gap: 1rem; }
   .text-action { font-size: 10px; }
-  .prose h1 { font-size: 25px; }
-  .prose h2 { font-size: 21px; }
-  .prose h3 { font-size: 17px; }
-  .prose pre { padding: 1rem; font-size: 10px; }
-  .prose table { font-size: 10px; }
+  .prose pre { padding: 1rem; }
   .prose th, .prose td { padding: .7rem; min-width: 110px; }
   .mermaid-block { padding: .8rem; }
   .asset-download { font-size: 0; }

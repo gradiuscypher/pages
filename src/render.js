@@ -82,7 +82,7 @@ function shell({ title, description = '', body, kind = 'document' }) {
 </head>
 <body class="${kind}">
 <a class="skip-link" href="#main">Skip to content</a>
-<header class="site-header"><a class="wordmark" href="/" aria-label="Pages home"><span class="brand-mark" aria-hidden="true">p.</span>pages<span class="brand-note">/ a place for the details</span></a><div class="header-actions"><a class="text-action" href="/docs">Docs</a><a class="text-action" href="/admin">Admin</a><button type="button" class="theme-toggle" aria-label="Switch color theme" aria-pressed="false" hidden>Dark theme</button></div></header>
+<header class="site-header"><a class="wordmark" href="/" aria-label="Pages home"><span class="brand-mark" aria-hidden="true">p.</span>pages<span class="brand-note">/ a place for the details</span></a><div class="header-actions"><a class="text-action" href="/docs">Docs</a><a class="text-action" href="/admin">Admin</a><button type="button" class="theme-toggle" aria-label="Switch color theme" aria-pressed="false" hidden>Dark theme</button><label class="font-control" hidden>Text size <select id="reading-size">${[16, 18, 20, 24].map(size => `<option value="${size}"${size === 18 ? ' selected' : ''}>${size}px</option>`).join('')}</select></label></div></header>
 ${body}
 <footer class="site-footer"><span>Small documents. Durable links.</span><a href="https://grds.io/" rel="noopener noreferrer">GRDS-inspired / built to read</a></footer>
 </body>
