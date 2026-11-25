@@ -1,9 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
-import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 
 const keyDigest = (key) => createHash('sha256').update(key).digest();
-const passwordHash = (password, salt) =>
-  scryptSync(password, salt, 32, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 });
+const derive = promisify(scrypt);
+const passwordOptions = { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 };
 
 function transaction(db, fn) {
   db.exec('BEGIN IMMEDIATE');
@@ -128,13 +129,13 @@ export function openStore(filename) {
   };
   return {
     close: () => db.close(),
-    verifyUser(username, password) {
+    async verifyUser(username, password) {
       const row = sql.user.get(username);
-      return !!row?.passwordHash && timingSafeEqual(passwordHash(password, row.salt), row.passwordHash);
+      return !!row?.passwordHash && timingSafeEqual(await derive(password, row.salt, 32, passwordOptions), row.passwordHash);
     },
     createUser(username, password) {
       const salt = randomBytes(16);
-      return sql.createUser.run(username, salt, passwordHash(password, salt)).changes > 0;
+      return sql.createUser.run(username, salt, scryptSync(password, salt, 32, passwordOptions)).changes > 0;
     },
     createKey(username) {
       const id = randomUUID();

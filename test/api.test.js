@@ -5,15 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { createApp } from '../src/app.js';
+import { openStore } from '../src/store.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const runFile = promisify(execFile);
 
-const key = 'test-key-with-at-least-24-characters';
 async function fixture(t, overrides = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'pages-test-'));
-  const options = { apiKey: key, publicUrl: 'https://pages.internal', dataDir, maxUploadBytes: 1024, ...overrides };
+  const options = { publicUrl: 'https://pages.internal', dataDir, maxUploadBytes: 1024, ...overrides };
+  const store = openStore(join(dataDir, 'pages.sqlite'));
+  store.createUser('alice', 'test-password');
+  store.createUser('bob', 'test-password');
+  const { key } = store.createKey('alice');
+  const otherKey = store.createKey('bob').key;
+  store.close();
   let instance;
   let server;
   let base;
@@ -30,6 +36,7 @@ async function fixture(t, overrides = {}) {
   await start();
   t.after(async () => { await stop(); await rm(dataDir, { recursive: true, force: true }); });
   return {
+    key, otherKey,
     request: (path, init = {}) => fetch(`${base}${path}`, {
       ...init, headers: { Authorization: `Bearer ${key}`, ...init.headers },
     }),
@@ -52,7 +59,7 @@ async function fixture(t, overrides = {}) {
 
 test('API requires the exact key, including reads, before accepting input', async (t) => {
   const f = await fixture(t);
-  for (const authorization of ['', 'Bearer wrong', `Basic ${key}`, `Bearer ${key}extra`]) {
+  for (const authorization of ['', 'Bearer wrong', `Basic ${f.key}`, `Bearer ${f.key}extra`]) {
     const response = await f.request('/api/pages', { headers: { Authorization: authorization } });
     assert.equal(response.status, 401);
     assert.equal(response.headers.get('www-authenticate'), 'Bearer');
@@ -70,10 +77,10 @@ test('documents persist, replace content, and expose public pages without exposi
   assert.equal((await (await f.request(`/api/pages/${page.id}`)).json()).markdown, page.markdown);
   const response = await f.request(`/api/pages/${page.id}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'Revised report', markdown: '## Updated\n\nNew evidence.' }),
+    body: JSON.stringify({ title: 'Revised report', description: 'Updated summary', markdown: '## Updated\n\nNew evidence.' }),
   });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).description, '');
+  assert.equal((await response.json()).description, 'Updated summary');
   const html = await f.request(`/p/${page.id}`, { headers: { Authorization: '' } });
   assert.equal(html.status, 200);
   assert.match(await html.text(), /Revised report/);
@@ -126,7 +133,7 @@ test('agent delete handles empty success, auth failures, and missing pages', asy
   const asset = await (await f.upload(page, 'evidence')).json();
   const base = new URL((await f.request('/healthz')).url).origin;
   const helper = new URL('../skills/publish-pages/scripts/pages.py', import.meta.url).pathname;
-  const env = { ...process.env, PAGES_URL: base, PAGES_API_KEY: key };
+  const env = { ...process.env, PAGES_URL: base, PAGES_API_KEY: f.key };
   await assert.rejects(runFile('python3', [helper, 'delete', page.id], {
     env: { ...env, PAGES_API_KEY: 'wrong-key' },
   }), (error) => error.code === 1 && /HTTP 401/.test(error.stderr));
@@ -148,21 +155,59 @@ test('authored HTML cannot inject scripts, handlers, unsafe links, or document c
   assert.doesNotMatch(html, /<div id="theme-toggle"|<div[^>]*class="site-header"/);
 });
 
-test('unconfigured API key permits complete anonymous page management; admin stays disabled', async (t) => {
-  const f = await fixture(t, { apiKey: undefined });
-  const headers = { Authorization: '' };
-  const created = await f.request('/api/pages', {
-    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'Open publishing', markdown: 'Public API' }),
+test('ownership follows the key and group changes never grant cross-account access', async (t) => {
+  const f = await fixture(t);
+  const json = (path, method, body, key = f.key) => f.request(path, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body),
   });
-  assert.equal(created.status, 201);
-  const page = await created.json();
-  const listed = await (await f.request('/api/pages', { headers })).json();
-  assert.ok(listed.pages.some(({ id }) => id === page.id));
-  assert.equal((await f.request(`/api/pages/${page.id}`, { headers })).status, 200);
-  assert.equal((await f.request('/admin', { headers })).status, 404);
-  assert.equal((await f.request(`/api/pages/${page.id}`, { method: 'DELETE', headers })).status, 204);
-  assert.equal((await f.request(`/p/${page.id}`)).status, 404);
+  const input = { title: 'Grouped', markdown: 'Text' };
+  for (const description of [undefined, '', '   ']) {
+    assert.equal((await json('/api/pages', 'POST', { ...input, description })).status, 400);
+  }
+  input.description = 'A short summary';
+  const group = await (await json('/api/groups', 'POST', { name: 'Work' })).json();
+  const page = await (await json('/api/pages', 'POST', { ...input, groupId: group.id, owner: 'bob' })).json();
+  assert.equal(page.owner, 'alice');
+  assert.equal(page.groupId, group.id);
+  const path = `/api/pages/${page.id}`;
+  assert.equal((await (await json(path, 'PUT', input)).json()).groupId, group.id);
+  assert.equal((await (await json(path, 'PATCH', { groupId: null })).json()).groupId, null);
+  assert.equal((await (await json(path, 'PATCH', { groupId: group.id })).json()).groupId, group.id);
+  const headers = { Authorization: `Bearer ${f.otherKey}` };
+  assert.deepEqual((await (await f.request('/api/pages', { headers })).json()).pages, []);
+  assert.equal((await json('/api/pages', 'POST', { ...input, groupId: group.id }, f.otherKey)).status, 400);
+  for (const [method, suffix] of [['GET', ''], ['PUT', ''], ['PATCH', ''], ['DELETE', ''], ['POST', '/assets'], ['DELETE', '/assets/example']]) {
+    assert.equal((await f.request(path + suffix, { method, headers })).status, 404);
+  }
+  assert.equal((await f.request('/library', { headers: { Authorization: '' } })).status, 401);
+  assert.equal((await f.request('/admin')).status, 404);
+});
+
+test('library requires a valid login; account keys work only until revoked', async (t) => {
+  const f = await fixture(t);
+  await f.create();
+  const basic = (password) => ({ Authorization: `Basic ${Buffer.from(`bob:${password}`).toString('base64')}` });
+  assert.equal((await f.request('/library', { headers: basic('wrong') })).status, 401);
+  const headers = basic('test-password');
+  const library = await f.request('/library', { headers });
+  assert.equal(library.status, 200);
+  assert.match(await library.text(), /System findings/);
+  const account = await (await f.request('/account', { headers })).text();
+  const csrf = account.match(/name="csrf" value="([^"]+)"/)[1];
+  const post = (path, token) => f.request(path, { method: 'POST', headers, body: new URLSearchParams({ csrf: token }), redirect: 'manual' });
+  assert.equal((await post('/account/keys', 'invalid')).status, 403);
+  const issued = await post('/account/keys', csrf);
+  assert.equal(issued.status, 201);
+  const key = (await issued.text()).match(/<code>([A-Za-z0-9_-]{43})<\/code>/)[1];
+  const bearer = { Authorization: `Bearer ${key}` };
+  assert.deepEqual((await (await f.request('/api/pages', { headers: bearer })).json()).pages, []);
+  const refreshed = await (await f.request('/account', { headers })).text();
+  assert.ok(!refreshed.includes(key));
+  const keys = Array.from(refreshed.matchAll(/action="(\/account\/keys\/[^"]+\/revoke)"/g), m => m[1]);
+  // Both Bob's fixture key and newly issued key belong to Bob.
+  for (const path of keys) assert.equal((await post(path, csrf)).status, 303);
+  assert.equal((await f.request('/api/pages', { headers: bearer })).status, 401);
+  assert.equal((await f.request('/api/pages')).status, 200);
 });
 
 test('admin requires separate credentials and confirmation token before cascading deletion', async (t) => {

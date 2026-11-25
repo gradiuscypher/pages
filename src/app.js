@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { accountRouter } from './account.js';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,16 +9,17 @@ import { renderHome, renderPage, renderError, renderGuide } from './render.js';
 import { adminRouter } from './admin.js';
 
 const staticDirectory = fileURLToPath(new URL('../dist/', import.meta.url));
-const digest = (value) => createHash('sha256').update(value).digest();
 const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
 function documentInput(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const { title, description = '', markdown } = body;
+  const { title, description, markdown } = body;
+  if (typeof description !== 'string') return null;
+  const summary = description.trim();
   if (typeof title !== 'string' || !title.trim() || title.length > 200 ||
-      typeof description !== 'string' || description.length > 500 ||
+      !/^.{1,500}$/su.test(summary) ||
       typeof markdown !== 'string' || Buffer.byteLength(markdown) > 1024 * 1024) return null;
-  return { title: title.trim(), description: description.trim(), markdown };
+  return { title: title.trim(), description: summary, markdown };
 }
 
 // Only inert raster formats render inline. Client-supplied MIME types are not trusted.
@@ -30,8 +31,7 @@ function imageMime(bytes) {
   return 'application/octet-stream';
 }
 
-export function createApp({ apiKey = '', adminPassword = '', publicUrl, dataDir, maxUploadBytes = 25 * 1024 * 1024 }) {
-  if (typeof apiKey !== 'string' || (apiKey && apiKey.length < 24)) throw new Error('PAGES_API_KEY must contain at least 24 characters when configured.');
+export function createApp({ adminPassword = '', publicUrl, dataDir, maxUploadBytes = 25 * 1024 * 1024 }) {
   if (typeof adminPassword !== 'string' || (adminPassword && adminPassword.length < 16)) throw new Error('ADMIN_PASSWORD must contain at least 16 characters when configured.');
   const origin = new URL(publicUrl);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
@@ -42,7 +42,6 @@ export function createApp({ apiKey = '', adminPassword = '', publicUrl, dataDir,
   const store = openStore(resolve(dataDir, 'pages.sqlite'));
   const app = express();
   app.disable('x-powered-by');
-  const expectedKey = apiKey ? digest(apiKey) : null;
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxUploadBytes, files: 1, fields: 0, parts: 1, fieldNameSize: 100, headerPairs: 100 },
@@ -82,34 +81,55 @@ export function createApp({ apiKey = '', adminPassword = '', publicUrl, dataDir,
     app.get(`/sdk/${name}`, (req, res) => res.download(fileURLToPath(new URL(`../sdk/${name}`, import.meta.url)), name));
   }
   if (adminPassword) app.use('/admin', adminRouter({ password: adminPassword, store, pageJson }));
+  app.use(accountRouter({ store }));
 
   app.use('/api', (req, res, next) => {
-    if (!expectedKey) return next();
     const authorization = req.get('authorization') || '';
-    if (!authorization.startsWith('Bearer ') || !timingSafeEqual(expectedKey, digest(authorization.slice(7)))) {
+    const owner = authorization.startsWith('Bearer ') && store.keyOwner(authorization.slice(7));
+    if (!owner) {
       res.set('WWW-Authenticate', 'Bearer');
       return fail(res, 401, 'A valid Bearer API key is required.');
     }
+    res.locals.owner = owner;
     next();
   }, express.json({ limit: '1100kb', strict: true }));
-  app.get('/api/pages', (req, res) => res.json({ pages: store.list().map(pageJson) }));
-  app.post('/api/pages', (req, res) => {
+  const validGroup = (owner, id) => id === null || (typeof id === 'string' && store.hasGroup(owner, id));
+  function parsePage(req, res, next) {
     const input = documentInput(req.body);
-    if (!input) return fail(res, 400, 'Expected title (1–200 characters), description (up to 500 characters), and markdown (up to 1 MiB).');
-    const page = pageJson(store.create(input));
+    if (!input) return fail(res, 400, 'Expected title (1–200 characters), description (1–500 characters), and markdown (up to 1 MiB).');
+    if (Object.hasOwn(req.body, 'groupId')) {
+      if (!validGroup(res.locals.owner, req.body.groupId)) return fail(res, 400, 'Invalid groupId.');
+      input.groupId = req.body.groupId;
+    }
+    res.locals.input = input;
+    next();
+  }
+  app.get('/api/groups', (req, res) => res.json({ groups: store.listGroups(res.locals.owner) }));
+  app.post('/api/groups', (req, res) => {
+    const name = req.body?.name;
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) return fail(res, 400, 'Expected group name (1–100 characters).');
+    const group = store.createGroup(res.locals.owner, name.trim());
+    if (!group) return fail(res, 409, 'Group name already exists.');
+    res.status(201).json(group);
+  });
+  app.get('/api/pages', (req, res) => res.json({ pages: store.list(res.locals.owner).map(pageJson) }));
+  app.post('/api/pages', parsePage, (req, res) => {
+    const page = pageJson(store.create({ ...res.locals.input, owner: res.locals.owner }));
     res.location(page.url).status(201).json(page);
   });
   app.use('/api/pages/:id', (req, res, next) => {
     const page = store.get(req.params.id);
-    if (!page) return fail(res, 404, 'Page not found.');
+    if (!page || page.owner !== res.locals.owner) return fail(res, 404, 'Page not found.');
     res.locals.page = page;
     next();
   });
   app.get('/api/pages/:id', (req, res) => res.json(pageJson(res.locals.page)));
-  app.put('/api/pages/:id', (req, res) => {
-    const input = documentInput(req.body);
-    if (!input) return fail(res, 400, 'Expected title (1–200 characters), description (up to 500 characters), and markdown (up to 1 MiB).');
-    res.json(pageJson(store.update(req.params.id, input)));
+  app.put('/api/pages/:id', parsePage, (req, res) => {
+    res.json(pageJson(store.update(req.params.id, res.locals.input)));
+  });
+  app.patch('/api/pages/:id', (req, res) => {
+    if (!validGroup(res.locals.owner, req.body?.groupId)) return fail(res, 400, 'Expected a groupId or null.');
+    res.json(pageJson(store.setGroup(req.params.id, req.body.groupId)));
   });
   app.delete('/api/pages/:id', (req, res) => {
     store.remove(req.params.id);

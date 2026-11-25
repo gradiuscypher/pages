@@ -13,6 +13,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY src ./src
+COPY scripts/create-user.js ./scripts/create-user.js
 COPY docs ./docs
 COPY sdk ./sdk
 RUN mkdir data && chown node:node data
