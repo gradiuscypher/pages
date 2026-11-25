@@ -39,9 +39,13 @@ function renderMarkdown(source) {
     headings.push({ id, text: text || 'Section', level: Number(token.tag.slice(1)) });
     return `<${token.tag} id="${capability}${id}">`;
   };
+  markdown.renderer.rules.heading_close = (tokens, index) => {
+    const { id, text } = headings.at(-1);
+    return ` <a class="${capability}section-link" href="#${id}" aria-label="Link to section: ${escape(text)}">#</a></${tokens[index].tag}>\n`;
+  };
   const html = sanitizeHtml(markdown.render(String(source ?? '')), {
     allowedTags: ['p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'ul', 'ol', 'li', 'pre', 'code', 'em', 'strong', 's', 'del', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'caption', 'sup', 'sub', 'kbd', 'details', 'summary', 'div', 'span', 'figure', 'figcaption'],
-    allowedAttributes: { '*': ['class', 'id'], a: ['href', 'title', 'rel'], img: ['src', 'alt', 'title', 'width', 'height', 'loading'], ol: ['start'], th: ['align'], td: ['align'] },
+    allowedAttributes: { '*': ['class', 'id'], a: ['href', 'title', 'rel', 'aria-label'], img: ['src', 'alt', 'title', 'width', 'height', 'loading'], ol: ['start'], th: ['align'], td: ['align'] },
     allowedSchemes: ['http', 'https', 'mailto'],
     allowedSchemesByTag: { img: ['http', 'https', 'data'] },
     allowProtocolRelative: false,

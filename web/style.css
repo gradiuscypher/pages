@@ -112,6 +112,8 @@ img { max-width: 100%; height: auto; }
 .prose h3 { font-size: 1.3em; }
 .prose h4 { font-size: 1.15em; }
 .prose h5, .prose h6 { font-size: 1em; }
+.prose .section-link { color: var(--muted); font-size: .8em; }
+@media print { .section-link { display: none; } }
 .prose strong { font-weight: 600; }
 .prose ul, .prose ol { padding-left: 1.6rem; margin: 1.25rem 0; }
 .prose li { padding-left: .2rem; margin: .5rem 0; }

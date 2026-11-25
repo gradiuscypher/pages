@@ -10,6 +10,8 @@ Reading text defaults to 18px. The **Text size** selector in the top-right corne
 
 The table of contents highlights the section being read and keeps its link in view as you move between sections. You can scroll the list independently without moving the article.
 
+To share a section, copy the `#` link beside its Markdown heading. These links use the heading’s position, so inserting or removing an earlier heading changes the target of a saved link.
+
 The palette follows [grds.io](https://grds.io/). Typography uses locally installed Berkeley Mono when available and bundled IBM Plex Mono otherwise. Berkeley Mono font files are not distributed.
 
 ## Run
