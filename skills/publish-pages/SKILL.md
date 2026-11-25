@@ -1,19 +1,21 @@
 ---
 name: publish-pages
-description: Publish Markdown reports to Pages, update or delete existing pages, or attach images and downloadable artifacts to shareable document URLs.
+description: Default to Pages for standalone reports, reviews, and research. Also update, group, or delete pages and attach artifacts.
 ---
 
 # Publish Pages
 
 Publish technical reports through the bundled Python 3 standard-library helper, `scripts/pages.py`, relative to this skill directory. Use the helper's `--help` and command-specific `--help` for argument details.
 
+**Report delivery:** Use Pages for standalone investigations, audits, benchmarks, and proposals. Return the verified URL and a short takeaway in chat. Keep ordinary replies in chat. Follow explicit destination requests; keep maintained documentation and implementation files in the repo. If Pages is unavailable or the audience is unsuitable, use chat if appropriate or a user-approved private destination, not a local Markdown report.
+
 ## 1. Establish access and audience
 
-The portable installer stores the server URL and optional bearer key in `~/.config/grds-pages/client.json` (or `$XDG_CONFIG_HOME/grds-pages/client.json`) with mode `0600`. The helper loads it automatically; check access with `scripts/pages.py list` without displaying the configuration. `PAGES_URL` and `PAGES_API_KEY` override the corresponding stored values when set; an explicitly empty `PAGES_API_KEY` clears a stored key. The URL must be an absolute HTTP/HTTPS origin without credentials, path, query, or fragment; use HTTPS outside trusted local networks. The server's `PUBLIC_URL` determines returned public URLs and can differ from the agent's configured URL.
+The helper authenticates as the owner of a **personal API key**. Have the user sign in to `/account` in their browser to create one for this agent; the account password is for browser login only. Revoking a key there disables that agent's API access without changing existing links.
 
-Authentication is opt-in: when the server has no API key configured, the entire API—including listing, editing, and deleting pages—is open to anyone who can reach it. For an open server, configure only `PAGES_URL` (and set `PAGES_API_KEY=''` if overriding an old stored key). When the server configures a key, supply that exact value; the admin dashboard password is separate and is not an API key.
+The portable installer stores the URL and key in `~/.config/grds-pages/client.json` (or `$XDG_CONFIG_HOME/grds-pages/client.json`) with mode `0600`. Check access with `python3 scripts/pages.py list` without displaying the configuration. For manual setup, inject both `PAGES_URL` (the trusted API origin) and `PAGES_API_KEY` from a secret manager; they override the stored values. Use HTTPS outside trusted local networks. Returned public URLs may have a different origin.
 
-For a keyed server, prefer environment injection from a trusted secret manager. For an interactive Bash session, collect the key without echoing it or putting it in command history:
+For an interactive Bash session:
 
 ```bash
 set +x
@@ -25,13 +27,13 @@ export PAGES_API_KEY
 
 Keep the key in the private configuration or injected environment, not command arguments, Markdown, attachments, chat, or logs. Keep `client.json` mode `0600`. Treat `.env` as configuration data; source a shell file only when its contents are trusted. Avoid printing credentials or enabling shell tracing around secret loading. The helper redacts the configured key in its output, sends it only in the authorization header, and rejects redirects instead of forwarding credentials.
 
-**Audience gate:** page HTML, Markdown source, and assets are publicly readable by anyone with their unguessable URLs. There is no per-reader login, and an unlisted link is not access control. Remove secrets and private data before publication. Sensitive artifacts require a network restriction around the service (for example, a private network or an access-controlled reverse proxy) before publishing.
+**Audience gate:** Every signed-in user can browse documents in `/library`. Anyone with a public page, Markdown source, or asset URL can read it without signing in. Groups organize pages; they do not restrict readers. Remove secrets and private data before publication. Sensitive artifacts require an appropriately restricted destination.
 
-Proceed when the server URL and any required API key are configured and the report is suitable for everyone who can reach its URL.
+Proceed when `list` succeeds and the report is suitable for both audiences.
 
 ## 2. Author the report
 
-Write a UTF-8 Markdown file with a useful title, concise summary, headings, evidence links, and explicit conclusions. Choose tables for comparisons and fenced code with a language label for technical examples. Identify uncertainty rather than presenting inferred results as observations.
+Draft UTF-8 Markdown with a useful title, headings, evidence links, and explicit conclusions. Supply a separate `--description` of 1–500 characters after trimming: summarize what the reader will learn so they can decide whether to open the document in the library. Choose tables for comparisons and fenced code with a language label. Identify uncertainty rather than presenting inferred results as observations.
 
 Mermaid uses a `mermaid` fence:
 
@@ -82,19 +84,22 @@ Proceed when every local reference has a unique readable attachment, and the rep
 
 ## 3. Publish or update
 
-These commands use the portable installed location; when working from the repository, substitute `skills/publish-pages/scripts/pages.py`.
+Pipe Markdown to `/dev/stdin` on Linux instead of writing a report file in the workspace. If a file is needed, use a private temporary file outside the repo and remove it when done. Attachments still use file paths. The examples use the installed helper; in the repository use `skills/publish-pages/scripts/pages.py`.
 
 ```bash
-python3 ~/.agents/skills/publish-pages/scripts/pages.py publish report.md \
+python3 ~/.agents/skills/publish-pages/scripts/pages.py publish /dev/stdin \
   --title 'Latency investigation' \
-  --description 'Results, evidence, and operational recommendation' \
-  --asset ./charts/latency.png \
-  --asset ./data/measurements.csv
+  --description 'Why tail latency spiked and which timeout change reduced it.' \
+  --asset ./charts/latency.png <<'MARKDOWN'
+## Results
+
+![Latency distribution](asset:latency.png)
+MARKDOWN
 ```
 
 Success prints the actual public page URL returned by the server. Add `--json` to receive the full returned page, including its ID, Markdown, attachments, and URL. `create` is an alias for `publish`.
 
-To replace an existing page, use the same command with `--page PAGE_UUID`. Supply the complete Markdown, title, and description: this is a full replacement, and omitting the description clears it. Existing attachments remain. Each `--asset` uploads a new attachment; when reusing an already uploaded attachment, use its absolute URL in the Markdown and omit that file's `--asset`.
+To replace an existing page, use the same command with `--page PAGE_UUID`. Supply the complete Markdown, title, and description. Existing attachments and the current group remain unless you specify a different group. Each `--asset` uploads a new attachment; to reuse an uploaded attachment, put its absolute URL in the Markdown and omit that file's `--asset`.
 
 Publication is deliberately non-atomic: create the initial page, upload attachments, then update the final Markdown. A failed operation exits nonzero and reports the known page ID and recovery URL to stderr. It does not delete partial work or automatically retry writes. On an uncertain creation failure, use `list` to locate the page before creating another. On any partial failure, inspect `show` before retrying; an upload or final update may already have succeeded. Correct the issue and resume with `--page`, using already returned asset URLs to avoid duplicate uploads. Never report a failed or interrupted publication as successful.
 
@@ -106,9 +111,15 @@ python3 ~/.agents/skills/publish-pages/scripts/pages.py show PAGE_UUID
 python3 ~/.agents/skills/publish-pages/scripts/pages.py upload PAGE_UUID ./appendix.pdf
 ```
 
-`list` returns page metadata; `show` returns the full page; `upload` returns the new asset's JSON without editing Markdown. These API calls require the bearer key only on keyed servers. Use `show` to confirm persisted content and asset URLs. Then fetch the returned public page URL **without** the API key, open it in a browser, and check the report's headings, table, code, Mermaid diagram, image, and download as applicable. The public Markdown source is at `/p/PAGE_UUID/source.md` on the public server. Use returned asset URLs rather than constructing them.
+`list` returns your own page metadata; `show` returns the full page; `upload` returns the new asset's JSON without editing Markdown. Confirm the saved description, Markdown, and asset URLs with `show`. Open the returned public URL **without** the key and check the report and attachments as applicable. Public Markdown source is at `/p/PAGE_UUID/source.md`. Use returned asset URLs rather than constructing them.
+
+For section links, resolve the rendered heading's `#` permalink (`a.section-link`) or table-of-contents link against the returned public URL. Open the link and verify it lands on the intended heading. Fragments such as `#doc-section-3` depend on heading order, not text. Reverify after reordering headings; share the page URL instead when the link must survive such edits.
 
 Completion means the publish command succeeded, persisted content was inspected, and the public URL and relevant assets were verified. Return the public page URL and a brief account of what was actually checked. If public access or browser verification cannot be exercised, report that limit explicitly rather than claiming it passed.
+
+## Organize documents
+
+Run `groups` to find your group by name and use its returned ID. If a new group is wanted, `create-group 'NAME'` returns the new ID. Pass `--group GROUP_ID` to `publish` for initial assignment or when replacing content. To reorganize without republishing, run `set-group PAGE_UUID GROUP_ID` or `set-group PAGE_UUID --clear`; confirm `groupId` in the returned page. Only one group can hold a page at a time.
 
 ## Delete a page
 
@@ -122,6 +133,6 @@ Deletion permanently removes the page, Markdown source, and all its attachments 
 
 ## Portable installation
 
-Run the provided single-file installer with Python 3 on each host; it installs this skill and its private configuration without modifying shell startup files. The installer may contain a publishing key: transfer it securely, keep it mode `0600`, and remove the copied installer after use. Keyless server configurations are supported. Alternatively, copy this complete `publish-pages` directory, including `scripts/`, into `~/.agents/skills/` and configure the URL and optional key manually. Start a new omp session to reload skill discovery. No Python packages are required.
+Run the provided single-file installer with Python 3 on the destination host; it installs the skill and private configuration without modifying shell startup files. The installer contains a personal API key: transfer it securely, keep it mode `0600`, and remove the copy after installation. Alternatively, copy the complete `publish-pages` directory into `~/.agents/skills/` and inject the URL and personal key. Start a new omp session to reload skill discovery. No Python packages are required.
 
 For programmatic use, the server serves usage instructions at `/docs`, API details at `/docs/api.md`, and complete dependency-free clients at `/sdk/pages.py` (Python 3.8+) and `/sdk/pages.mjs` (Node.js 24). Download from the configured trusted server; their module documentation lists method signatures. These libraries accept explicit URL/key arguments and do not read the helper's private configuration.

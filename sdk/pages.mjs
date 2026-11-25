@@ -2,21 +2,26 @@
  * Dependency-free Pages client for Node.js 24 (save as pages.mjs).
  *
  * import { Client, PagesError } from './pages.mjs';
- * const client = new Client('https://pages.example.com'); // optional API key
- * const page = await client.publish({ title: 'Report',
+ * const client = new Client('https://pages.example.com', process.env.PAGES_API_KEY);
+ * const page = await client.publish({ title: 'Report', description: 'Quarterly trends',
  *   markdown: '![Chart](asset:chart.png)', assets: ['./chart.png'] });
  *
- * new Client(baseUrl, apiKey = null, { timeoutMs = 30000 } = {})
- *   baseUrl: HTTP(S) origin; no environment/config is read.
+ * new Client(baseUrl, apiKey, { timeoutMs = 30000 } = {})
+ *   Supply the API origin and a personal bearer key from /account.
  * All methods are async and return server JSON objects (deletes return null):
  *   list()
  *   get(pageId)
- *   create({ title, markdown, description = '' })
- *   update(pageId, { title, markdown, description = '' }) // full replacement
+ *   listGroups()
+ *   createGroup(name)
+ *   setGroup(pageId, groupId) // null removes membership
+ *   create({ title, markdown, description, groupId? })
+ *   update(pageId, { title, markdown, description, groupId? })
  *   delete(pageId)
  *   upload(pageId, path)                               // one local file
  *   deleteAsset(pageId, assetId)
- *   publish({ title, markdown, description = '', assets = [], pageId = null })
+ *   publish({ title, markdown, description, groupId?, assets = [], pageId = null })
+ * Description is a 1–500 character summary after trimming. Omit groupId to
+ * preserve membership when updating an existing page; null clears it.
  *
  * publish takes Markdown CONTENT, not a filename. It preflights local files and
  * asset:basename references, creates/replaces a page, uploads all supplied files,
@@ -63,10 +68,21 @@ function identifier(value) {
   return value.toLowerCase();
 }
 
-function documentInput({ title, markdown, description = '' } = {}) {
+function groupValue(groupId) {
+  if (groupId !== null && (typeof groupId !== 'string' || !groupId.trim())) throw new PagesError('Expected a group ID or null');
+  return groupId;
+}
+
+function documentInput({ title, markdown, description, groupId } = {}) {
   if (typeof title !== 'string' || !title.trim()) throw new PagesError('Title must be a nonempty string');
-  if (typeof markdown !== 'string' || typeof description !== 'string') throw new PagesError('Markdown and description must be strings');
-  return { title, markdown, description };
+  if (typeof markdown !== 'string') throw new PagesError('Markdown must be a string');
+  const summary = typeof description === 'string' ? description.trim() : '';
+  if (!/^[\s\S]{1,500}$/u.test(summary)) {
+    throw new PagesError('Description must be a summary of 1–500 characters');
+  }
+  const payload = { title, markdown, description: summary };
+  if (groupId !== undefined) payload.groupId = groupValue(groupId);
+  return payload;
 }
 
 async function prepareAssets(paths) {
@@ -90,10 +106,9 @@ async function prepareAssets(paths) {
 }
 
 export class Client {
-  constructor(baseUrl, apiKey = null, { timeoutMs = 30000 } = {}) {
+  constructor(baseUrl, apiKey, { timeoutMs = 30000 } = {}) {
     this.baseUrl = httpUrl(baseUrl, 'Pages URL', true);
-    if (apiKey === null) apiKey = '';
-    if (typeof apiKey !== 'string' || /[^\x21-\x7e]/.test(apiKey)) throw new PagesError('API key must be printable ASCII without whitespace, or empty');
+    if (typeof apiKey !== 'string' || !apiKey || /[^\x21-\x7e]/.test(apiKey)) throw new PagesError('A personal API key from /account is required (printable ASCII without whitespace)');
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2147483647) throw new PagesError('timeoutMs must be a positive integer no greater than 2147483647');
     this.#apiKey = apiKey;
     this.timeoutMs = timeoutMs;
@@ -102,8 +117,7 @@ export class Client {
   #apiKey;
 
   async #request(method, route, { payload, body } = {}) {
-    const headers = { Accept: 'application/json' };
-    if (this.#apiKey) headers.Authorization = `Bearer ${this.#apiKey}`;
+    const headers = { Accept: 'application/json', Authorization: `Bearer ${this.#apiKey}` };
     if (payload !== undefined) {
       body = JSON.stringify(payload);
       headers['Content-Type'] = 'application/json';
@@ -138,6 +152,19 @@ export class Client {
 
   async list() {
     return this.#request('GET', '/api/pages');
+  }
+
+  async listGroups() {
+    return this.#request('GET', '/api/groups');
+  }
+
+  async createGroup(name) {
+    if (typeof name !== 'string' || !name.trim()) throw new PagesError('Group name must be a nonempty string');
+    return this.#request('POST', '/api/groups', { payload: { name: name.trim() } });
+  }
+
+  async setGroup(pageId, groupId) {
+    return this.#request('PATCH', `/api/pages/${identifier(pageId)}`, { payload: { groupId: groupValue(groupId) } });
   }
 
   async get(pageId) {
@@ -177,8 +204,8 @@ export class Client {
     return result;
   }
 
-  async publish({ title, markdown, description = '', assets = [], pageId = null } = {}) {
-    const payload = documentInput({ title, markdown, description });
+  async publish({ title, markdown, description, groupId, assets = [], pageId = null } = {}) {
+    const payload = documentInput({ title, markdown, description, groupId });
     let id = pageId === null ? null : identifier(pageId);
     const prepared = await prepareAssets(assets);
     const references = new Map();

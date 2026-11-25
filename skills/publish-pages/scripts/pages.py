@@ -90,8 +90,8 @@ class Client:
         configured = "PAGES_URL" in os.environ and "PAGES_API_KEY" in os.environ
         config = {} if configured else self.stored_config()
         self.key = os.environ.get("PAGES_API_KEY", config.get("apiKey", ""))
-        if not isinstance(self.key, str) or any(ord(character) < 33 or ord(character) > 126 for character in self.key):
-            raise PublishError("PAGES_API_KEY or client.json apiKey must be printable ASCII without whitespace, or empty")
+        if not isinstance(self.key, str) or not self.key or any(ord(c) < 33 or ord(c) > 126 for c in self.key):
+            raise PublishError("Set a personal API key from /account in PAGES_API_KEY or client.json apiKey (printable ASCII without whitespace)")
         self.base = http_url(os.environ.get("PAGES_URL", config.get("url", "")), "Pages URL", base=True)
         self.timeout = timeout
         self.opener = urllib.request.build_opener(NoRedirects())
@@ -104,9 +104,7 @@ class Client:
         return text
 
     def request(self, method, route, payload=None, *, body=None, content_type=None):
-        headers = {"Accept": "application/json"}
-        if self.key:
-            headers["Authorization"] = f"Bearer {self.key}"
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.key}"}
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
             content_type = "application/json"
@@ -192,6 +190,9 @@ def publish(client, args):
         raise PublishError("Cannot read Markdown file as UTF-8") from None
     if not args.title.strip():
         raise PublishError("Title must not be empty")
+    description = args.description.strip()
+    if not 1 <= len(description) <= 500:
+        raise PublishError("Description must be a summary of 1–500 characters")
     assets = prepare_assets(args.asset)
     references = {}
     for match in ASSET_REFERENCE.finditer(markdown):
@@ -204,7 +205,9 @@ def publish(client, args):
             raise PublishError(f"No --asset supplied for asset:{token}")
         references[token] = name
 
-    payload = {"title": args.title, "description": args.description, "markdown": markdown}
+    payload = {"title": args.title, "description": description, "markdown": markdown}
+    if args.group is not None:
+        payload["groupId"] = args.group
     identifier = args.page
     recovery_url = None
     try:
@@ -243,8 +246,8 @@ def parser():
     root = argparse.ArgumentParser(
         description="Publish Markdown to Pages using environment variables or private client.json configuration.",
         epilog="PAGES_URL and PAGES_API_KEY override ~/.config/grds-pages/client.json "
-               "(or $XDG_CONFIG_HOME/grds-pages/client.json), including an explicitly empty key. "
-               "Keys are optional on open servers. Requests do not follow redirects. "
+               "(or $XDG_CONFIG_HOME/grds-pages/client.json). Supply a personal API key from /account. "
+               "Requests do not follow redirects. "
                "Public URLs need no bearer key. See each command's --help.",
     )
     root.add_argument("--timeout", type=positive_timeout, default=30, metavar="SECONDS", help="per-request timeout (default: 30)")
@@ -254,12 +257,20 @@ def parser():
                                              "then replace Markdown. Failures retain recoverable pages/attachments; no automatic retry.")
     create.add_argument("markdown", metavar="MARKDOWN_FILE", help="UTF-8 Markdown file")
     create.add_argument("--title", required=True, help="page title")
-    create.add_argument("--description", default="", help="page summary (default: empty)")
+    create.add_argument("--description", required=True, help="page summary (1–500 characters after trimming)")
+    create.add_argument("--group", metavar="GROUP_ID", help="assign this group; omit to preserve membership on update")
     create.add_argument("--asset", action="append", default=[], metavar="PATH", help="attach a file; repeat for more (basenames must be unique)")
     create.add_argument("--page", type=page_id, metavar="ID", help="fully replace this existing page; preserve its attachments")
     create.add_argument("--json", action="store_true", help="print full returned page JSON instead of its public URL")
-    listing = commands.add_parser("list", help="list page metadata as JSON")
-    listing.set_defaults(json=True)
+    commands.add_parser("list", help="list your page metadata as JSON")
+    commands.add_parser("groups", help="list your document groups as JSON")
+    new_group = commands.add_parser("create-group", help="create a document group and print its JSON")
+    new_group.add_argument("name", metavar="NAME")
+    set_group = commands.add_parser("set-group", help="change just the group of an existing page; print its JSON")
+    set_group.add_argument("page", type=page_id, metavar="PAGE_ID")
+    membership = set_group.add_mutually_exclusive_group(required=True)
+    membership.add_argument("group", metavar="GROUP_ID", nargs="?")
+    membership.add_argument("--clear", action="store_true", help="remove the page from its group")
     show = commands.add_parser("show", help="show a page's full JSON")
     show.add_argument("page", type=page_id, metavar="ID")
     delete = commands.add_parser("delete", help="permanently delete a page and all its attachments",
@@ -279,25 +290,30 @@ def main():
         client = Client(args.timeout)
         if args.command in ("publish", "create"):
             result = publish(client, args)
-            text = json.dumps(result, ensure_ascii=False, indent=2) if args.json else result["url"]
+            output = result if args.json else result["url"]
         elif args.command == "list":
-            text = json.dumps(client.request("GET", "/api/pages"), ensure_ascii=False, indent=2)
+            output = client.request("GET", "/api/pages")
+        elif args.command == "groups":
+            output = client.request("GET", "/api/groups")
+        elif args.command == "create-group":
+            output = client.request("POST", "/api/groups", {"name": args.name})
+        elif args.command == "set-group":
+            output = client.request("PATCH", f"/api/pages/{args.page}", {"groupId": args.group})
         elif args.command == "show":
-            text = json.dumps(client.request("GET", f"/api/pages/{args.page}"), ensure_ascii=False, indent=2)
+            output = client.request("GET", f"/api/pages/{args.page}")
         elif args.command == "delete":
             client.request("DELETE", f"/api/pages/{args.page}")
-            text = f"Deleted page {args.page} and its attachments."
+            output = f"Deleted page {args.page} and its attachments."
         else:
             assets = prepare_assets([args.file])
             current = client.request("GET", f"/api/pages/{args.page}")
             identifier, recovery_url = public_page(current)
             try:
-                result = client.upload(identifier, next(iter(assets.values())))
+                output = client.upload(identifier, next(iter(assets.values())))
             except (PublishError, KeyboardInterrupt) as error:
                 raise PublishError(f"{error or 'Interrupted'}\nRecovery page ID: {identifier}\nRecovery URL: {recovery_url}\n"
                                    "Inspect show output before retrying; the attachment may have been saved.") from None
-            text = json.dumps(result, ensure_ascii=False, indent=2)
-        print(client.redact(text))
+        print(client.redact(output if isinstance(output, str) else json.dumps(output, ensure_ascii=False, indent=2)))
         return 0
     except (PublishError, KeyboardInterrupt) as error:
         message = str(error) or "Interrupted"

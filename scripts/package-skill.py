@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a self-contained installer for the Pages agent skill and optional key."""
+"""Build a private Pages skill installer from PAGES_URL and a personal PAGES_API_KEY."""
 
 import argparse
 import base64
@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parent.parent
 
 INSTALLER = '''#!/usr/bin/env python3
-"""Pages skill installer. May contain a publishing key; transfer securely."""
+"""Pages skill installer. Contains a personal API key; transfer securely."""
 import argparse
 import base64
 import json
@@ -54,7 +54,7 @@ def main():
     print(f"Pages URL: {PAYLOAD['config']['url']}")
     print("Start a new omp session. The helper loads configuration automatically; no shell exports are needed.")
     print("Verify: python3 ~/.agents/skills/publish-pages/scripts/pages.py list")
-    print("Remove this copied installer after use; it may contain a publishing key.")
+    print("Remove this copied installer after use; it contains a personal API key.")
 
 if __name__ == "__main__":
     main()
@@ -63,29 +63,22 @@ if __name__ == "__main__":
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--env-file', type=Path, default=ROOT / '.env')
     parser.add_argument('--output', type=Path, default=ROOT / '.local' / 'install-pages-skill.py')
     args = parser.parse_args()
-    values = {}
-    for line in args.env_file.read_text(encoding='utf-8').splitlines():
-        if line.strip() and not line.lstrip().startswith('#'):
-            name, separator, value = line.partition('=')
-            if separator:
-                values[name.strip()] = value.strip().strip('\"\'')
-    key = values.get('PAGES_API_KEY', '')
-    url = values.get('PUBLIC_URL', '').rstrip('/')
+    key = os.environ.get('PAGES_API_KEY', '')
+    url = os.environ.get('PAGES_URL', '').rstrip('/')
     try:
         parsed = urlsplit(url)
         parsed.port
     except ValueError:
-        parser.error('The environment file must contain a valid PUBLIC_URL HTTP(S) origin.')
-    if key and (len(key) < 24 or any(ord(c) < 33 or ord(c) > 126 for c in key)):
-        parser.error('PAGES_API_KEY must be printable ASCII without whitespace and at least 24 characters, or empty for an open API.')
+        parser.error('Set PAGES_URL to a valid HTTP(S) origin.')
+    if not key or any(ord(c) < 33 or ord(c) > 126 for c in key):
+        parser.error('Set PAGES_API_KEY to a personal key from /account (printable ASCII without whitespace).')
     if (parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username is not None
             or parsed.password is not None or parsed.path or parsed.query or parsed.fragment
             or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url) or '\\' in url
             or '?' in url or '#' in url):
-        parser.error('The environment file must contain a PUBLIC_URL HTTP(S) origin.')
+        parser.error('Set PAGES_URL to an HTTP(S) origin without a path, query, credentials, or fragment.')
     payload = {
         'config': {'url': url, 'apiKey': key},
         'files': {name: (ROOT / 'skills' / 'publish-pages' / name).read_text(encoding='utf-8')
@@ -104,7 +97,7 @@ def main():
         if os.path.exists(temporary):
             os.unlink(temporary)
     print(f'Created private installer: {args.output} (0600)')
-    print('May contain a publishing key. Copy securely; do not commit or serve this file.')
+    print('Contains a personal API key. Copy securely; do not commit or serve this file.')
 
 
 if __name__ == '__main__':

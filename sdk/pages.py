@@ -1,20 +1,27 @@
 """Dependency-free Pages client for Python 3 (save this file as pages.py).
 
+    import os
     from pages import Client, PagesError
-    client = Client("https://pages.example.com")  # optional second argument: API key
-    page = client.publish("Report", "![Chart](asset:chart.png)", assets=["chart.png"])
+    client = Client("https://pages.example.com", os.environ["PAGES_API_KEY"])
+    page = client.publish("Report", "![Chart](asset:chart.png)", "Quarterly trends", assets=["chart.png"])
 
-Client(base_url, api_key=None, *, timeout=30) accepts an HTTP(S) origin and a
-positive per-request socket timeout in seconds. No environment/config is read.
+Client(base_url, api_key, *, timeout=30) accepts an HTTP(S) origin, a personal
+bearer key from /account and a socket timeout in seconds. No config is read.
 Methods return server JSON dictionaries; delete/delete_asset return None:
     list()
     get(page_id)
-    create(title, markdown, description="")
-    update(page_id, title, markdown, description="")  # complete replacement
+    list_groups()
+    create_group(name)
+    set_group(page_id, group_id)  # None removes membership
+    create(title, markdown, description, *, group_id=...)
+    update(page_id, title, markdown, description, *, group_id=...)
     delete(page_id)
     upload(page_id, path)                          # one local file
     delete_asset(page_id, asset_id)
-    publish(title, markdown, description="", assets=(), page_id=None)
+    publish(title, markdown, description, assets=(), page_id=None, *, group_id=...)
+
+Description is a 1–500 character summary after trimming. Omit group_id to
+preserve membership on update; None explicitly clears it.
 
 publish accepts Markdown CONTENT, not a filename. It preflights local asset paths,
 creates a page (or replaces page_id), uploads every asset, substitutes asset:basename
@@ -40,6 +47,7 @@ import uuid
 
 
 _ASSET_REFERENCE = re.compile(r"asset:([^\s<>\"'`()\[\]{}]+)")
+_UNSET = object()
 
 
 class PagesError(Exception):
@@ -81,12 +89,23 @@ def _identifier(value):
         raise PagesError("Page and asset IDs must be UUIDs") from None
 
 
-def _document(title, markdown, description):
+def _group_value(group_id):
+    if group_id is not None and (not isinstance(group_id, str) or not group_id.strip()):
+        raise PagesError("Expected a group ID or None")
+    return group_id
+
+
+def _document(title, markdown, description, group_id):
     if not isinstance(title, str) or not title.strip():
         raise PagesError("Title must be a nonempty string")
-    if not isinstance(markdown, str) or not isinstance(description, str):
-        raise PagesError("Markdown and description must be strings")
-    return {"title": title, "markdown": markdown, "description": description}
+    if not isinstance(markdown, str):
+        raise PagesError("Markdown must be a string")
+    if not isinstance(description, str) or not 1 <= len(description.strip()) <= 500:
+        raise PagesError("Description must be a summary of 1–500 characters")
+    payload = {"title": title, "markdown": markdown, "description": description.strip()}
+    if group_id is not _UNSET:
+        payload["groupId"] = _group_value(group_id)
+    return payload
 
 
 def _assets(paths):
@@ -113,12 +132,10 @@ def _assets(paths):
 
 
 class Client:
-    def __init__(self, base_url, api_key=None, *, timeout=30):
+    def __init__(self, base_url, api_key, *, timeout=30):
         self.base_url = _url(base_url, "Pages URL", origin=True)
-        if api_key is None:
-            api_key = ""
-        if not isinstance(api_key, str) or any(ord(c) < 33 or ord(c) > 126 for c in api_key):
-            raise PagesError("API key must be printable ASCII without whitespace, or empty")
+        if not isinstance(api_key, str) or not api_key or any(ord(c) < 33 or ord(c) > 126 for c in api_key):
+            raise PagesError("A personal API key from /account is required (printable ASCII without whitespace)")
         if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
             raise PagesError("Timeout must be a positive finite number of seconds")
         self._api_key = api_key
@@ -126,9 +143,7 @@ class Client:
         self._opener = urllib.request.build_opener(_NoRedirects())
 
     def _request(self, method, route, payload=None, *, body=None, content_type=None):
-        headers = {"Accept": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {self._api_key}"}
         if payload is not None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             content_type = "application/json"
@@ -157,14 +172,25 @@ class Client:
     def list(self):
         return self._request("GET", "/api/pages")
 
+    def list_groups(self):
+        return self._request("GET", "/api/groups")
+
+    def create_group(self, name):
+        if not isinstance(name, str) or not name.strip():
+            raise PagesError("Group name must be a nonempty string")
+        return self._request("POST", "/api/groups", {"name": name.strip()})
+
+    def set_group(self, page_id, group_id):
+        return self._request("PATCH", f"/api/pages/{_identifier(page_id)}", {"groupId": _group_value(group_id)})
+
     def get(self, page_id):
         return self._request("GET", f"/api/pages/{_identifier(page_id)}")
 
-    def create(self, title, markdown, description=""):
-        return self._request("POST", "/api/pages", _document(title, markdown, description))
+    def create(self, title, markdown, description, *, group_id=_UNSET):
+        return self._request("POST", "/api/pages", _document(title, markdown, description, group_id))
 
-    def update(self, page_id, title, markdown, description=""):
-        return self._request("PUT", f"/api/pages/{_identifier(page_id)}", _document(title, markdown, description))
+    def update(self, page_id, title, markdown, description, *, group_id=_UNSET):
+        return self._request("PUT", f"/api/pages/{_identifier(page_id)}", _document(title, markdown, description, group_id))
 
     def delete(self, page_id):
         return self._request("DELETE", f"/api/pages/{_identifier(page_id)}")
@@ -193,8 +219,8 @@ class Client:
             _url(result.get(field), f"Asset {field}")
         return result
 
-    def publish(self, title, markdown, description="", assets=(), page_id=None):
-        payload = _document(title, markdown, description)
+    def publish(self, title, markdown, description, assets=(), page_id=None, *, group_id=_UNSET):
+        payload = _document(title, markdown, description, group_id)
         identifier = _identifier(page_id) if page_id is not None else None
         prepared = _assets(assets)
         references = {}
@@ -211,13 +237,13 @@ class Client:
             references[token] = name
         recovery_url = None
         try:
-            current = self.get(identifier) if identifier else self.create(**payload)
+            current = self.get(identifier) if identifier else self._request("POST", "/api/pages", payload)
             # Retain the ID even when the server's public URL is malformed.
             identifier = _identifier(current.get("id"))
             recovery_url = _url(current.get("url"), "Returned page URL")
             uploaded = {name: self.upload(identifier, path)["url"] for name, path in prepared.items()}
             payload["markdown"] = _ASSET_REFERENCE.sub(lambda match: uploaded[references[match.group(1)]], markdown)
-            result = self.update(identifier, **payload)
+            result = self._request("PUT", f"/api/pages/{identifier}", payload)
             _identifier(result.get("id"))
             _url(result.get("url"), "Returned page URL")
             return result
