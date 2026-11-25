@@ -4,7 +4,7 @@
 > Vibecoded, experimental software for trusted local homelabs only.
 > Do not run this code in production or expose it directly to the Internet.
 
-An artifact publisher for agents. Publish Markdown as readable HTML pages with light/dark mode, highlighted code, tables, Mermaid diagrams, images, and downloadable attachments. No editor, account system, CDN, or external database.
+An artifact publisher for agents. Publish Markdown as readable HTML pages with light/dark mode, highlighted code, tables, Mermaid diagrams, images, and downloadable attachments. Each page belongs to a local user and can belong to one of that user's groups. No editor, CDN, or external database.
 
 Reading text defaults to 18px. The **Text size** selector in the top-right corner remembers your choice in this browser. On desktop, Pages reserves wider margins and uses the extra right-hand space for the sticky table of contents. At viewport widths of 960px or less, the table of contents moves above the article.
 
@@ -26,18 +26,32 @@ npm run build
 cp .env.example .env
 chmod 600 .env
 # Set PUBLIC_URL to the origin readers and agents will use.
-# API access is open by default. To require a key, generate one with:
-# openssl rand -hex 32
-# Privately set PAGES_API_KEY to that value; never paste it into chat.
 # Optionally set a separate ADMIN_PASSWORD (at least 16 characters).
 npm start
 ```
 
 Open `http://localhost:3000` for the formatting showcase. The landing page does not list published documents. `GET /healthz` is the health check. Build again after editing files in `web/`.
 
+### Provision accounts and publish
+
+Create local accounts on the server, against the same `DATA_DIR` the service uses. `node scripts/create-user.js USERNAME` reads the password from standard input. Usernames are 1–64 ASCII letters, digits, underscores, periods, or hyphens. For example, in Bash:
+
+```sh
+read -rsp 'New account password: ' pages_password; printf '\n'
+printf '%s\n' "$pages_password" | node --env-file=.env scripts/create-user.js alice
+unset pages_password
+```
+
+For Compose, use `docker compose exec -T pages node scripts/create-user.js alice` in place of the `node` command above, so the account is created in the mounted database. Use a unique password and HTTPS for browser logins.
+
+On upgrade, back up the database before starting the new version. Migration assigns existing documents to `gradius` and fills missing summaries; page IDs, public links, and attachments stay intact. Provision the `gradius` login to manage those documents. The old server-wide publishing key no longer works. Give each publishing client a personal key instead:
+
+1. Open `/account` in a browser and sign in with your local username and password (HTTP Basic).
+2. Generate a personal key, copy it into the client's secret store, and send it as `Authorization: Bearer <key>` on `/api` requests. The account page is also where you revoke keys and manage groups.
+3. Publish a title, short summary (`description`), and Markdown. Choose one of your groups now or assign one later. Visit `/library` to browse the table of **all users'** documents and summaries; it requires an account.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PAGES_API_KEY` | Empty (API open) | Optional Bearer key, at least 24 characters when set; use a random 32-byte key |
 | `ADMIN_PASSWORD` | Empty (admin disabled) | Separate dashboard password, at least 16 characters when set |
 | `PUBLIC_URL` | `http://localhost:3000` | Canonical HTTP(S) origin, without a path; used in returned links |
 | `HOST` | `127.0.0.1` | Listening address |
@@ -47,7 +61,7 @@ Open `http://localhost:3000` for the formatting showcase. The landing page does 
 | `PAGES_BIND_ADDRESS` | `127.0.0.1` | Compose-only host address; set the LAN IP to expose Pages there |
 | `PAGES_PORT` | `3000` | Compose-only published host port; reflect it in `PUBLIC_URL` |
 
-`npm start` reads `.env`; the container receives variables from Compose. Keep `.env` private (`chmod 600 .env`). Rotate a configured API key or admin password by changing it and restarting; existing page links remain valid. The API key and admin password are independent credentials.
+`npm start` reads `.env`; the container receives variables from Compose. Keep `.env` private (`chmod 600 .env`). Rotate the admin password by changing it and restarting. Rotate a personal API key by generating its replacement, updating the client, and revoking the old key at `/account`; public links are unaffected.
 
 ### Container
 
@@ -61,17 +75,17 @@ Use `sudo docker ...` when your account does not have Docker socket access. Memb
 
 Compose binds to `PAGES_BIND_ADDRESS:PAGES_PORT` and stores the database in the `pages-data` volume. The default is loopback. For LAN access, set `PAGES_BIND_ADDRESS` to the host's LAN IP and `PUBLIC_URL` to `http://LAN_IP:PAGES_PORT`, then recreate with `docker compose up --build -d --wait`. This publishes only on that address, not every host interface; it does not enforce a source-subnet firewall. Keep the LAN address stable with a static assignment or DHCP reservation. The container restarts unless explicitly stopped and exposes a Docker health check.
 
-For HTTPS, put your internal reverse proxy in front of the published port and set `PUBLIC_URL` to its HTTPS origin. If running Node directly behind a proxy, leave `HOST=127.0.0.1`. Set request-body limits at the proxy above `MAX_UPLOAD_MB` plus multipart overhead. Container port 3000 listens on all interfaces inside the container. HTTP sends the bearer key unencrypted; use it only on a trusted LAN/VPN.
+For HTTPS, put your internal reverse proxy in front of the published port and set `PUBLIC_URL` to its HTTPS origin. If running Node directly behind a proxy, leave `HOST=127.0.0.1`. Set request-body limits at the proxy above `MAX_UPLOAD_MB` plus multipart overhead. Container port 3000 listens on all interfaces inside the container. Plain HTTP sends browser passwords and bearer keys unencrypted.
 
 ### Reader access and trust
 
-**Absent or empty `PAGES_API_KEY` means every `/api` operation is open, including listing, source reads, writes, and deletion.** Set a key to require exact `Authorization: Bearer <PAGES_API_KEY>` authentication for all API requests. Public page links, source downloads, and attachment links never require that key. UUIDs are unguessable, not a substitute for reader authentication. Anyone holding a link can read or forward it. The landing page has no public document index, but the open API does expose a listing.
+Every API request requires a valid personal bearer key and acts as that user. The API lists and manages only the owner's pages, attachments, and groups. Two keys issued by the same user share that user's access. Groups organize pages; they are not access-control lists.
 
-Deploy on a trusted private homelab network/VPN, not in production or on the public Internet. For confidential artifacts, enforce reader authentication at an internal reverse proxy. Use HTTPS whenever credentials cross a network. A configured publishing key grants full control of all documents; keep it in agent environment/secrets, not prompts or committed files.
+Anyone with a public page, Markdown source, or attachment link can read or forward it without signing in. Every account holder can discover documents via `/library`. Deploy on a trusted private homelab network/VPN, not on the public Internet. For confidential artifacts, enforce reader authentication at an internal reverse proxy. Keep keys in client secrets, not prompts or committed files.
 
 Raw HTML in Markdown is sanitized; executable HTML, JavaScript, embedded iframes, and arbitrary CSS are not supported. Upload standalone HTML reports as downloads, or express the report using Markdown, tables, images, and Mermaid. Only signature-recognized PNG, JPEG, GIF, and WebP files display inline. SVG, HTML, PDFs, and all other uploads are forced downloads with a sandbox policy. Remote HTTPS images can be embedded and contact their host when readers open the page; use uploaded images for self-contained reports.
 
-Attachments are stored as database BLOBs. Uploads are buffered in memory up to the per-file limit. This is a small internal publisher, not a multi-tenant file store: there is no total storage quota or per-agent access isolation. Page updates are full replacements; concurrent writers are last-write-wins.
+Attachments are stored as database BLOBs. Uploads are buffered in memory up to the per-file limit. There is no total storage quota. Page content updates are full replacements; concurrent writers are last-write-wins.
 
 ## AI agents
 
@@ -79,13 +93,13 @@ Start with the served [LLM instructions](/llms.txt) (also rendered at `/docs`), 
 
 ### Publish with the omp skill
 
-The optional omp installer packages the server URL and optional API key from the private `.env`. It also works with an open API:
+The optional omp installer packages client credentials from the environment, not the server `.env`. Supply `PAGES_URL` (service origin) and `PAGES_API_KEY` (a personal key created at `/account`) through your secret manager, then run:
 
 ```sh
 python3 scripts/package-skill.py
 ```
 
-This creates `.local/install-pages-skill.py` with mode `0600`. **When authentication is enabled, it contains the real publishing key.** `.env` and `.local/` are excluded from Git and the Docker build context. Transfer the installer with SCP/SFTP to the homelab VM, then run it as the user who runs omp:
+This creates `.local/install-pages-skill.py` with mode `0600`. **It contains the real publishing key.** `.env` and `.local/` are excluded from Git and the Docker build context. Transfer the installer with SCP/SFTP to the homelab VM, then run it as the user who runs omp:
 
 ```sh
 chmod 600 install-pages-skill.py
@@ -96,19 +110,19 @@ rm install-pages-skill.py
 
 The installer writes the skill to `~/.agents/skills/publish-pages/` and credentials to `~/.config/grds-pages/client.json` (or `$XDG_CONFIG_HOME/grds-pages/client.json`) with mode `0600`. Start a new omp session to discover the skill. Python 3 is the only dependency. No repository checkout, shell startup changes, or exported secrets are needed. An unchanged installer can be rerun safely; use `--replace` explicitly when updating existing differing files.
 
-`PAGES_URL` and `PAGES_API_KEY` override corresponding stored client settings. For secret-manager deployment instead, copy `skills/publish-pages/` to `~/.agents/skills/` and supply both environment variables. Read `skills/publish-pages/SKILL.md` for the publishing workflow and the helper's `--help` for commands. After rotating the server key or changing its public URL, regenerate the installer and update client hosts.
+`PAGES_URL` and `PAGES_API_KEY` override corresponding stored client settings. For secret-manager deployment instead, copy `skills/publish-pages/` to `~/.agents/skills/` and supply both environment variables. Read `skills/publish-pages/SKILL.md` for the publishing workflow and the helper's `--help` for commands. After rotating that client's key or changing its public URL, regenerate the installer and update client hosts.
 
 Delete a page and all its attachments with `python3 ~/.agents/skills/publish-pages/scripts/pages.py delete PAGE_UUID`. Success prints the deleted UUID; missing pages fail with HTTP 404. Deletion removes public page, source, and attachment access, but cannot revoke saved copies. To distribute updated tooling to installed agents, regenerate the installer and run it on each client with `--replace`.
 
 ## HTTP interface
 
-The authoritative [API reference](docs/api.md) documents every API operation, request/response shape, limits, public reads, attachment workflow, and recovery from partial publication. It is rendered at `/docs/api` and served as Markdown at `/docs/api.md`; machine-readable OpenAPI is at `/openapi.json`. The API is open unless `PAGES_API_KEY` is configured.
+The authoritative [API reference](docs/api.md) documents every API operation, request/response shape, limits, public reads, attachment workflow, and recovery from partial publication. It is rendered at `/docs/api` and served as Markdown at `/docs/api.md`; machine-readable OpenAPI is at `/openapi.json`.
 
 ## Admin dashboard
 
 Set `ADMIN_PASSWORD` to a separate private password of at least 16 characters and restart to enable `/admin`. Without a password, `/admin` is disabled. Open it in a browser and use HTTP Basic authentication with username `admin` and the configured password.
 
-The dashboard lets an administrator review published documents and delete pages with their attachments. Deletion is CSRF-protected and irreversible; it cannot revoke copies readers already downloaded. Dashboard authentication is separate from optional API Bearer authentication: an API key does not grant dashboard access, and the admin password is not an API key. **The dashboard password does not restrict an open API: anyone with network access can still list, modify, and delete pages through it.** Use HTTPS for the browser login and keep this interface on the trusted network.
+The dashboard lets an administrator review published documents and delete pages with their attachments. Deletion is CSRF-protected and irreversible; it cannot revoke copies readers already downloaded. Dashboard credentials are separate from account logins and personal API keys. Use HTTPS for the browser login and keep this interface on the trusted network.
 
 ## Operations
 

@@ -4,17 +4,17 @@ Base URL: the service origin, for example `https://pages.example.com`. All paths
 
 ## Authentication and trust
 
-The API is **open by default**: absent or empty server `PAGES_API_KEY` disables API authentication. When configured, **every `/api` request**, including list and get, requires exact `Authorization: Bearer <key>`. Missing/incorrect credentials return 401 with `WWW-Authenticate: Bearer`. There are no per-page scopes, owners, or separate read/write keys. Public reads and documentation do not require the API key. The optional `/admin` browser dashboard has separate HTTP Basic authentication; do not send its password as a Bearer key.
+**Every `/api` request requires `Authorization: Bearer <personal key>`.** Generate a key in the browser at `/account` with your local username and password (HTTP Basic). A key acts as its owner: it can list, read, modify, or delete that user's documents and attachments and manage that user's groups. Other users' pages return 404. Missing, incorrect, or revoked keys return 401 with `WWW-Authenticate: Bearer`. Browser passwords and the optional `/admin` login are not API credentials.
 
-Use a trusted LAN/VPN and HTTPS. Open API access permits anyone who can reach it to list, read, modify, and delete all content. Public links are not reader authentication. Keep credentials out of Markdown, attachments, logs, and prompts.
+The browser library at `/library` requires an account and lists **all users'** documents, including their summaries. Groups organize documents without changing who can read them. Public page, source, and attachment links require no login. Use a trusted LAN/VPN and HTTPS; keep credentials out of Markdown, attachments, logs, and prompts.
 
 ## Client libraries
 
 Download the complete, dependency-free Python 3.8+ client at [`/sdk/pages.py`](/sdk/pages.py) or the Node.js 24+ ES module at [`/sdk/pages.mjs`](/sdk/pages.mjs). Prefer these libraries to hand-written HTTP code. See [agent instructions](/llms.txt) for runnable download/import examples and publication with assets.
 
-Python: `Client(base_url, api_key=None, *, timeout=30)` exposes `list()`, `get(page_id)`, `create(title, markdown, description='')`, `update(page_id, title, markdown, description='')`, `delete(page_id)`, `upload(page_id, path)`, `delete_asset(page_id, asset_id)`, and `publish(title, markdown, description='', assets=(), page_id=None)`.
+Python: pass the origin and personal key to `Client(base_url, api_key, timeout=30)`. Use `list()`, `get(page_id)`, `create(title, markdown, description)`, `update(page_id, title, markdown, description)`, `delete(page_id)`, `upload(page_id, path)`, `delete_asset(page_id, asset_id)`, and `publish(title, markdown, description, assets=(), page_id=None)`. `create`, `update`, and `publish` also accept keyword `group_id`. Use `list_groups()`, `create_group(name)`, or `set_group(page_id, group_id)` for groups.
 
-JavaScript: `new Client(baseUrl, apiKey=null, {timeoutMs=30000}={})` exposes asynchronous `list()`, `get(pageId)`, `create({title, markdown, description=''})`, `update(pageId, {title, markdown, description=''})`, `delete(pageId)`, `upload(pageId, path)`, `deleteAsset(pageId, assetId)`, and `publish({title, markdown, description='', assets=[], pageId=null})`.
+JavaScript: pass the origin and personal key to `new Client(baseUrl, apiKey, {timeoutMs: 30000})`. Use asynchronous `list()`, `get(pageId)`, `create({title, markdown, description})`, `update(pageId, {title, markdown, description})`, `delete(pageId)`, `upload(pageId, path)`, `deleteAsset(pageId, assetId)`, and `publish({title, markdown, description, assets, pageId})`. `assets` and `pageId` are optional in `publish`; `create`, `update`, and `publish` accept optional `groupId`. Use `listGroups()`, `createGroup(name)`, and `setGroup(pageId, groupId)` for groups.
 
 Responses are the JSON shapes below; deletes return Python `None` / JavaScript `null`. Both libraries reject redirects and do not automatically retry. `PagesError.status` is the HTTP status or null/None for a transport/local failure. Publication errors expose known recovery state as Python `page_id` / `recovery_url` or JavaScript `pageId` / `recoveryUrl`. Markdown arguments contain the document text, not a pathname.
 
@@ -27,14 +27,15 @@ Create and replace accept `Content-Type: application/json`:
 ```
 
 - `title`: required string, nonblank after trimming; maximum 200 JavaScript UTF-16 code units **before** trimming.
-- `description`: optional string, default `""`, maximum 500 UTF-16 code units before trimming. Title and description are trimmed when stored.
+- `description`: required short summary for the library; 1–500 UTF-16 code units after trimming. Whitespace alone is invalid.
+- `groupId`: optional; one of the key owner's group IDs, or `null` for ungrouped. Omit on create for ungrouped; omit on replacement to retain the current group. `owner` is determined by the key, not supplied by the client.
 - `markdown`: required string, may be empty, maximum 1,048,576 UTF-8 bytes. Stored unchanged.
 - Unknown object properties are ignored. Arrays, null, missing required fields, and wrong types are invalid. JSON parser limit is `1100kb` (1,126,400 bytes), including JSON syntax/escaping. A document can fit the Markdown limit but exceed the JSON request limit.
 
 A **PageSummary** contains exactly these fields (UUID and timestamps below are examples):
 
 ```json
-{"id":"00000000-0000-4000-8000-000000000001","title":"Incident review","description":"Evidence and remediation.","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z","url":"https://pages.example.com/p/00000000-0000-4000-8000-000000000001"}
+{"id":"00000000-0000-4000-8000-000000000001","owner":"alice","groupId":null,"title":"Incident review","description":"Evidence and remediation.","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z","url":"https://pages.example.com/p/00000000-0000-4000-8000-000000000001"}
 ```
 
 A **Page** contains all PageSummary fields plus `markdown` (string) and `assets` (array of Asset objects; empty when none). An **Asset** has:
@@ -49,15 +50,18 @@ A **Page** contains all PageSummary fields plus `markdown` (string) and `assets`
 
 | Method and path | Request | Success |
 | --- | --- | --- |
-| `GET /api/pages` | None | 200 `{"pages":[PageSummary,...]}`; all pages, ordered `updatedAt` descending then ID ascending; no pagination/filtering |
+| `GET /api/pages` | None | 200 `{"pages":[PageSummary,...]}`; only the key owner's pages, ordered `updatedAt` descending then ID ascending; no pagination/filtering |
 | `POST /api/pages` | Document JSON above | 201 Page; `Location` is its public HTML URL |
 | `GET /api/pages/{id}` | None | 200 Page |
-| `PUT /api/pages/{id}` | Complete document JSON above | 200 Page; full replacement, not a patch; existing attachments retained; omitted description clears it |
+| `PUT /api/pages/{id}` | Complete document JSON above | 200 Page; replaces title, summary and Markdown; retains attachments and, unless supplied, the current group |
+| `PATCH /api/pages/{id}` | `{"groupId":"GROUP_UUID"}` or `{"groupId":null}` | 200 Page; assigns, moves or ungroups without rewriting content |
 | `DELETE /api/pages/{id}` | None | 204, empty body; deletes page and all its attachments |
 | `POST /api/pages/{id}/assets` | `multipart/form-data` with exactly one file part named `file`, with filename; no other fields/parts | 201 Asset; `Location` is its public URL |
 | `DELETE /api/pages/{id}/assets/{assetId}` | None | 204, empty body; asset must belong to this page |
+| `POST /api/groups` | `{"name":"Incident reviews"}` (1–100 characters after trimming) | 201 `{"id":"GROUP_UUID","name":"Incident reviews"}` |
+| `GET /api/groups` | None | 200 `{"groups":[{"id":"GROUP_UUID","name":"Incident reviews"}]}`; only the key owner's groups |
 
-Get/replace/delete/upload on a missing page returns 404. Deleting a missing asset or an asset belonging to another page returns 404. Repeating a successful delete therefore returns 404, not 204. There is no bulk operation, patch, search, version history, idempotency key, conditional update, or transaction spanning API requests. Concurrent updates are last-write-wins. Page creation/update and attachment add/remove update `updatedAt`; uploading/deleting an attachment does not rewrite Markdown. Asset deletion may leave broken Markdown links.
+Page-specific API operations return 404 for missing pages and other users' pages. Deleting a missing asset or one belonging to another page returns 404. Repeating a successful delete therefore returns 404, not 204. There is no bulk operation, content patch, search, version history, idempotency key, conditional update, or transaction spanning API requests. Concurrent updates are last-write-wins. Page creation/update and attachment add/remove update `updatedAt`; uploading/deleting an attachment does not rewrite Markdown. Asset deletion may leave broken Markdown links.
 
 ### Upload limits and rendering
 
@@ -80,7 +84,7 @@ Publication is **not atomic**. A later failure can leave a created page, some up
 
 ## Public reads and discovery
 
-These routes require no API credential, even when a key is configured:
+These routes require no Pages credential:
 
 | GET path | Success |
 | --- | --- |
@@ -105,9 +109,10 @@ API errors use JSON `{"error":"message"}`. Do not depend on message text as an e
 
 | Status | Causes |
 | --- | --- |
-| 400 | Invalid document fields/JSON; malformed URI or multipart form; missing/invalid filename; missing file, extra multipart fields/parts/files, wrong file field |
-| 401 | API key configured and Bearer value missing/incorrect |
-| 404 | Page missing, asset missing/not owned by page, unknown API route |
+| 400 | Invalid document fields/JSON, group name or group assignment (including unknown/other user's group); malformed URI or multipart form; missing/invalid filename; missing file, extra multipart fields/parts/files, wrong file field |
+| 401 | Personal bearer key missing, incorrect or revoked |
+| 404 | Page missing/not owned by key's user, asset missing/not owned by page, unknown API route |
+| 409 | Group name already exists for that user |
 | 413 | JSON body too large or file exceeds configured byte limit |
 | 500 | Unexpected server failure |
 
