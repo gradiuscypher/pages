@@ -86,7 +86,7 @@ function shell({ title, description = '', body, kind = 'document' }) {
 </head>
 <body class="${kind}">
 <a class="skip-link" href="#main">Skip to content</a>
-<header class="site-header"><a class="wordmark" href="/" aria-label="Pages home"><span class="brand-mark" aria-hidden="true">p.</span>pages<span class="brand-note">/ a place for the details</span></a><div class="header-actions"><a class="text-action" href="/docs">Docs</a><a class="text-action" href="/admin">Admin</a><button type="button" class="theme-toggle" aria-label="Switch color theme" aria-pressed="false" hidden>Dark theme</button><label class="font-control" hidden>Text size <select id="reading-size">${[16, 18, 20, 24].map(size => `<option value="${size}"${size === 18 ? ' selected' : ''}>${size}px</option>`).join('')}</select></label></div></header>
+<header class="site-header"><a class="wordmark" href="/" aria-label="Pages home"><span class="brand-mark" aria-hidden="true">p.</span>pages<span class="brand-note">/ a place for the details</span></a><div class="header-actions"><a class="text-action" href="/library">Library</a><a class="text-action" href="/account">Account</a><a class="text-action" href="/docs">Docs</a><a class="text-action" href="/admin">Admin</a><button type="button" class="theme-toggle" aria-label="Switch color theme" aria-pressed="false" hidden>Dark theme</button><label class="font-control" hidden>Text size <select id="reading-size">${[16, 18, 20, 24].map(size => `<option value="${size}"${size === 18 ? ' selected' : ''}>${size}px</option>`).join('')}</select></label></div></header>
 ${body}
 <footer class="site-footer"><span>Small documents. Durable links.</span><a href="https://grds.io/" rel="noopener noreferrer">GRDS-inspired / built to read</a></footer>
 </body>
@@ -160,12 +160,12 @@ flowchart LR
 const response = await fetch('http://localhost:3000/api/pages', {
   method: 'POST',
   headers: {
-    ...(process.env.PAGES_API_KEY
-      ? { Authorization: \`Bearer \${process.env.PAGES_API_KEY}\` } : {}),
+    Authorization: \`Bearer \${process.env.PAGES_API_KEY}\`,
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
     title: 'Notes worth keeping',
+    description: 'A short guide to publishing Markdown notes.',
     markdown: '# The details\\n\\nStart here.',
   }),
 });
@@ -181,7 +181,7 @@ console.log(url); // Your public reading link
 - **Yours to keep.** Download the source, save attachments, or print.
 - **Comfortable by default.** Light and dark themes, on any screen.
 
-This is an illustrative preview, not a stored document. Read the [agent guide](/docs) for downloadable clients and the API reference. Published documents have individual reading links; the API and password-protected [admin dashboard](/admin) provide the page index.
+This is an illustrative preview, not a stored document. Read the [agent guide](/docs) for downloadable clients and the API reference. Sign in to the [library](/library) to browse published documents, or share an individual reading link without requiring sign-in.
 `;
 
 export function renderHome() {
@@ -190,7 +190,9 @@ export function renderHome() {
     title: 'A place for the details',
     description: 'Publish Markdown, share a link, and let the details speak for themselves.',
     kind: 'home',
-    body: `<main id="main"><section class="hero"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Write once. Share clearly.</p><h1>A place for<br>the <em>details.</em></h1><p class="hero-description">Notes, guides, and ideas deserve more than a message thread. Publish Markdown as a clean, lasting page.</p><div class="hero-actions"><a class="primary-action" href="#preview">Explore a page <span aria-hidden="true">↓</span></a><a class="text-action" href="#publishing">How to publish <span aria-hidden="true">↗</span></a></div><div class="hero-index" aria-hidden="true"><span>01 / WORDS</span><span>02 / CODE</span><span>03 / DIAGRAMS</span></div></section><section id="publishing" class="publishing-intro"><p class="eyebrow">A small, deliberate workflow</p><div><h2>Your tools write it.<br>A link delivers it.</h2><p>Publish with <code>POST /api/pages</code> using your server's Bearer key. Include a title and Markdown; attach files when you need them. The response gives you the public reading URL.</p><p>Reading is public to anyone with the link. Publishing stays authenticated. There is no public document directory.</p></div></section><section id="preview" class="preview-shell" aria-labelledby="preview-heading"><div class="preview-banner"><span id="preview-heading">The reading experience</span><span>Illustrative preview · not a published page</span></div><div class="document-layout"><article class="document-body"><header class="document-header"><p class="eyebrow">A field guide / 001</p><h2 class="document-title">Less friction.<br>More understanding.</h2><p class="document-description">A quick look at what belongs on a page.</p><div class="document-meta"><span>Markdown → a document worth sharing</span></div></header><div class="prose">${html}</div></article>${tableOfContents(headings)}</div></section></main>`,
+    body: `<main id="main"><section class="hero"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Write once. Share clearly.</p><h1>A place for<br>the <em>details.</em></h1><p class="hero-description">Notes, guides, and ideas deserve more than a message thread. Publish Markdown as a clean, lasting page.</p><div class="hero-actions"><a class="primary-action" href="#preview">Explore a page <span aria-hidden="true">↓</span></a><a class="text-action" href="#publishing">How to publish <span aria-hidden="true">↗</span></a></div><div class="hero-index" aria-hidden="true"><span>01 / WORDS</span><span>02 / CODE</span><span>03 / DIAGRAMS</span></div></section>
+<section id="publishing" class="publishing-intro"><p class="eyebrow">A small, deliberate workflow</p><div><h2>Your tools write it.<br>A link delivers it.</h2><p>Sign in to <a href="/account">your account</a> to create a personal API key. Send a title, a short summary, and Markdown to <code>POST /api/pages</code> with that key. The response gives you the reading URL.</p><p>Anyone with the link can read the document. Signed-in users can also browse all published documents in the <a href="/library">library</a>.</p></div></section>
+<section id="preview" class="preview-shell" aria-labelledby="preview-heading"><div class="preview-banner"><span id="preview-heading">The reading experience</span><span>Illustrative preview · not a published page</span></div><div class="document-layout"><article class="document-body"><header class="document-header"><p class="eyebrow">A field guide / 001</p><h2 class="document-title">Less friction.<br>More understanding.</h2><p class="document-description">A quick look at what belongs on a page.</p><div class="document-meta"><span>Markdown → a document worth sharing</span></div></header><div class="prose">${html}</div></article>${tableOfContents(headings)}</div></section></main>`,
   });
 }
 
@@ -205,9 +207,41 @@ export function renderGuide(title, source) {
 
 export function renderAdmin(pages) {
   const rows = pages.map((page) => `<tr><td><a href="/p/${escape(page.id)}">${escape(page.title)}</a><p>${escape(page.description)}</p><small>${escape(page.id)}</small></td><td>${timestamp(page.updatedAt)}</td><td><a href="/admin/pages/${escape(page.id)}/delete">Review deletion</a></td></tr>`).join('');
-  return shell({ title: 'Administration', body: `<main id="main" class="document-layout"><article class="document-body"><header class="document-header"><p class="eyebrow">Administration</p><h1 class="document-title">All pages</h1><p>${pages.length} published pages. Open a title to review its content. Deletion permanently removes the page and all attachments.</p><p>The admin password protects this dashboard only. An instance without an API key allows anyone with network access to manage pages through the API.</p></header><div class="prose">${pages.length ? `<table><thead><tr><th>Page</th><th>Updated</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No pages published.</p>'}</div></article></main>` });
+  return shell({ title: 'Administration', body: `<main id="main" class="document-layout"><article class="document-body"><header class="document-header"><p class="eyebrow">Administration</p><h1 class="document-title">All pages</h1><p>${pages.length} published pages. Open a title to review its content. Deletion permanently removes the page and all attachments.</p><p>The admin password protects this dashboard only. Use a personal API key to manage your own pages through the API.</p></header><div class="prose">${pages.length ? `<table><thead><tr><th>Page</th><th>Updated</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No pages published.</p>'}</div></article></main>` });
 }
 
 export function renderDeleteConfirmation(page, csrf) {
   return shell({ title: 'Confirm deletion', body: `<main id="main" class="document-layout"><article class="document-body"><header class="document-header"><p class="eyebrow">Permanent deletion</p><h1 class="document-title">${escape(page.title)}</h1><p>${escape(page.description)}</p></header><div class="prose"><p>Delete this page, its Markdown source, and all ${page.assets.length} attachments? Saved reader copies cannot be revoked.</p><p><a href="/p/${escape(page.id)}">Review published page</a> · <a href="/p/${escape(page.id)}/source.md">Download source</a></p>${attachments(page.assets)}<form method="post" action="/admin/pages/${escape(page.id)}/delete"><input type="hidden" name="csrf" value="${escape(csrf)}"><button class="primary-action" type="submit">Permanently delete page</button> <a href="/admin">Cancel</a></form></div></article></main>` });
+}
+
+function dashboard(title, intro, content) {
+  return shell({ title, body: `<main id="main" class="dashboard"><header class="document-header"><h1 class="document-title">${escape(title)}</h1><p class="document-description">${escape(intro)}</p></header><div class="prose">${content}</div></main>` });
+}
+
+export function renderLibrary(pages) {
+  const rows = pages.map(page => `<tr><th scope="row"><a href="/p/${encodeURIComponent(page.id)}">${escape(page.title)}</a></th><td>${escape(page.description)}</td><td>${escape(page.owner)}</td></tr>`).join('');
+  return dashboard('Document library', 'All published documents, most recently updated first. Anyone with a Pages account can browse this list.',
+    rows ? `<table><thead><tr><th scope="col">Document</th><th scope="col">Summary</th><th scope="col">Owner</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No documents have been published yet.</p>');
+}
+
+export function renderNewKey({ id, key }) {
+  return dashboard('Your new API key', 'Copy this key now and store it securely. You won’t be able to see it again.',
+    `<p><code>${escape(key)}</code></p><p>Use it as a Bearer token to publish and manage your documents. To revoke it, look for key ID <code>${escape(id)}</code> in your account.</p><p><a href="/account">Return to your account</a></p>`);
+}
+
+export function renderAccount({ username, csrf, keys, groups, pages }) {
+  const token = `<input type="hidden" name="csrf" value="${escape(csrf)}">`;
+  const keyRows = keys.map(({ id }) => `<li><form method="post" action="/account/keys/${encodeURIComponent(id)}/revoke">${token}<code>${escape(id)}</code> <button type="submit">Revoke</button></form></li>`).join('');
+  const groupNames = new Map(groups.map(group => [group.id, group.name]));
+  const groupList = groups.map(group => `<li>${escape(group.name)}</li>`).join('');
+  const groupOptions = groups.map(group => `<option value="${escape(group.id)}">${escape(group.name)}</option>`).join('');
+  const pageOptions = pages.map(page => `<option value="${escape(page.id)}">${escape(page.title)} — ${escape(groupNames.get(page.groupId) ?? 'No group')} (${escape(page.id)})</option>`).join('');
+  return dashboard('Your account', `Signed in as ${username}.`, `
+<section><h2>Personal API keys</h2><p>Each key can manage all of your documents and attachments. Use a separate key for each tool so you can revoke its access individually.</p>
+${keyRows ? `<ul aria-label="Active key IDs">${keyRows}</ul>` : '<p>No active keys.</p>'}
+<form method="post" action="/account/keys">${token}<button class="primary-action" type="submit">Create API key</button></form></section>
+<section><h2>Your groups</h2><p>Use groups to organize your documents. A group does not change who can read a document.</p>
+${groupList ? `<ul>${groupList}</ul>` : '<p>No groups yet.</p>'}
+<form method="post" action="/account/groups">${token}<label>New group name <input type="text" name="name" maxlength="100" required></label> <button class="primary-action" type="submit">Create group</button></form></section>
+<section><h2>Organize a document</h2>${pageOptions ? `<form method="post" action="/account/pages/group">${token}<label>Document and current group <select name="pageId" required><option value="">Choose a document</option>${pageOptions}</select></label> <label>New group <select name="groupId"><option value="">No group</option>${groupOptions}</select></label> <button class="primary-action" type="submit">Save group</button></form>` : '<p>After you publish a document, you can change its group here.</p>'}</section>`);
 }

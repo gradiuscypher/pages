@@ -182,6 +182,10 @@ img { max-width: 100%; height: auto; }
 .error-page { max-width: 850px; margin: 0 auto; min-height: 65vh; padding: 7rem 2rem; }
 .error-page h1 { font-size: clamp(32px, 5vw, 60px); line-height: 1.25; letter-spacing: -.06em; font-weight: 500; overflow-wrap: anywhere; }
 .error-page > p:not(.eyebrow) { color: var(--muted); margin-bottom: 2rem; }
+.dashboard { max-width: 66rem; min-height: 65vh; margin: auto; padding: clamp(2rem, 6vw, 5rem) clamp(1.25rem, 5vw, 4rem); }
+.dashboard form { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
+.dashboard form label { display: grid; max-width: 100%; gap: .25rem; font-size: .85em; }
+.dashboard input, .dashboard select, .dashboard button:not(.primary-action) { max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); color: var(--fg); padding: .5rem; font: inherit; }
 @media (min-width: 1600px) { .hero { padding-top: 8rem; } }
 @media (max-width: 1400px) {
   .site-footer { margin-left: 3.5rem; margin-right: 3.5rem; }
