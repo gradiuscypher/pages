@@ -1,3 +1,5 @@
+import { enableExport } from './export.js';
+
 const root = document.documentElement;
 const themeButton = document.querySelector('.theme-toggle');
 const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -195,4 +197,4 @@ async function renderDiagrams() {
   }
 }
 
-renderDiagrams();
+renderDiagrams().then(enableExport);

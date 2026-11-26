@@ -12,6 +12,8 @@ The table of contents highlights the section being read and keeps its link in vi
 
 To share a section, copy the `#` link beside its Markdown heading. These links use the heading’s position, so inserting or removing an earlier heading changes the target of a saved link.
 
+Choose **Export to HTML** on a published page, then open the downloaded `.html` file directly in a browser. It keeps the current theme and text size, rendered diagrams and their source, and downloadable attachments. Images that cannot be embedded (for example, when a remote host blocks copying) become labeled online links; the export status tells you how many. Ordinary web links still point to their original destinations.
+
 The palette follows [grds.io](https://grds.io/). Typography uses locally installed Berkeley Mono when available and bundled IBM Plex Mono otherwise. Berkeley Mono font files are not distributed.
 
 ## Run
